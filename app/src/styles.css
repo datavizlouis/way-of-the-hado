@@ -203,3 +203,13 @@ button { font: inherit; }
 .ost-select .select-grid { margin-top: 0; }
 .soundtrack .ost-note { text-align: center; margin: 10px 0 0; }
 .p1-portrait .player-tag { left: -38px; top: auto; bottom: 0; }
+
+/* portrait at 2x, now-playing strip sitting on the selector grid */
+.p1-portrait .select-portrait { height: 356px; }
+.ost-map { width: min(700px, calc(100% - 32px)); }
+.select-col { display: flex; flex-direction: column; gap: 10px; }
+.select-col .now-playing { display: flex; align-items: center; gap: 14px; border: 0; box-shadow: none; background: none; padding: 0 8px; text-align: left; }
+.select-col .now-playing p { margin: 0; }
+.select-col .track { flex: 1; min-height: 0; margin: 0; font-size: 14px; }
+.select-col .eq { width: 160px; height: 40px; }
+.select-col .select-grid { margin-top: 0; }

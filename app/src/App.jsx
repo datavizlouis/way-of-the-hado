@@ -7,7 +7,7 @@ import Franchise from './sections/Franchise.jsx';
 
 // Fixed section heights: inside a Tableau dashboard the extension iframe is as tall as
 // the whole zone (~5000-7000px), so viewport units are meaningless here.
-const H = { intro: 1000, characters: 1050, soundtrack: 860 };
+const H = { intro: 1000, characters: 1050, soundtrack: 940 };
 
 export default function App() {
   const [data, setData] = useState(null);

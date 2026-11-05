@@ -76,7 +76,7 @@ export default function Soundtrack({ characters, height }) {
   const [armed, setArmed] = useState(false); // audio unlocked by a first click / key press
   const [muted, setMuted] = useState(false);
   const [playing, setPlaying] = useState(false);
-  const [volume, setVolume] = useState(0.6);
+  const [volume] = useState(0.6);
   const chip = useMemo(() => new Chiptune(), []);
   const audio = useRef(null);
   const timer = useRef(null);
@@ -226,18 +226,6 @@ export default function Soundtrack({ characters, height }) {
 
       <div className="ost-map">
         <StageMap character={shown} />
-        <div className="now-playing">
-          <p className="pixel small-pixel dimmed">{playing ? 'Now playing' : armed && !muted ? 'Paused' : 'Sound test'}</p>
-          <p className="pixel track">{playing || armed ? shown?.Theme : 'Click a fighter to start the music'}</p>
-          <canvas ref={eqRef} width="160" height="40" className="eq" aria-hidden="true" />
-          <button className="pixel-btn" onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'} aria-pressed={muted}>
-            {muted ? '♪̸' : '♪'}
-          </button>
-          <label className="vol pixel small-pixel">
-            VOL
-            <input type="range" min="0" max="1" step="0.05" value={volume} onChange={(e) => setVolume(Number(e.target.value))} />
-          </label>
-        </div>
       </div>
 
       <div className="ost-select">
@@ -252,6 +240,15 @@ export default function Soundtrack({ characters, height }) {
             {shown?.Name}, {shown?.Country}
           </span>
         </div>
+        <div className="select-col">
+          <div className="now-playing">
+            <p className="pixel small-pixel dimmed">{playing ? 'Now playing' : armed && !muted ? 'Paused' : 'Sound test'}</p>
+            <p className="pixel track">{playing || armed ? shown?.Theme : 'Click a fighter to start the music'}</p>
+            <canvas ref={eqRef} width="160" height="40" className="eq" aria-hidden="true" />
+            <button className="pixel-btn" onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'} aria-pressed={muted}>
+              {muted ? '♪̸' : '♪'}
+            </button>
+          </div>
         <div
           className="select-grid"
           role="listbox"
@@ -281,6 +278,7 @@ export default function Soundtrack({ characters, height }) {
               <span className="sr-only">{c.Name}</span>
             </button>
           ))}
+        </div>
         </div>
       </div>
       <p className="ost-note">
