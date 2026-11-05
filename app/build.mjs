@@ -25,6 +25,10 @@ const MIME = {
   '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.otf': 'font/otf',
 };
 const FONT_FAMILIES = { brush: 'HadoBrush', display: 'HadoDisplay', pixel: 'HadoPixel' };
+// Restrict a family to the glyphs it really has. The personal-use build of Cafe Felix
+// (brush) maps digits and punctuation to a watermark, so only A-Z/a-z/space use it and
+// everything else falls through to the next font in the stack.
+const FONT_RANGES = { HadoBrush: 'U+0020,U+0041-005A,U+0061-007A' };
 
 function walk(dir, base = dir) {
   if (!fs.existsSync(dir)) return [];
@@ -58,7 +62,8 @@ function buildAssets() {
     const uri = `data:${MIME[ext]};base64,${buf.toString('base64')}`;
     if (rel.startsWith('fonts/')) {
       const fam = FONT_FAMILIES[path.basename(rel, ext).toLowerCase()];
-      if (fam) fontFaces.push(`@font-face{font-family:'${fam}';src:url(${uri});font-display:swap;}`);
+      const range = FONT_RANGES[fam] ? `unicode-range:${FONT_RANGES[fam]};` : '';
+      if (fam) fontFaces.push(`@font-face{font-family:'${fam}';src:url(${uri});font-display:swap;${range}}`);
       continue;
     }
     files[rel] = uri;

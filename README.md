@@ -12,12 +12,13 @@ A long-form (~6,000px) Tableau **data app**: a React and Three.js viz extension 
 | Area | Status |
 |---|---|
 | Tableau workspace: scaffold, 3 embedded CSV datasources wired, `.twbx` packaging | ✅ Done |
-| Intro: brush paint / un-paint, scroll-stepped chapters | ✅ Done. The logo and brush font are placeholders. |
+| Intro: brush paint / un-paint with ink splatter, scroll-stepped chapters | ✅ Done |
+| Logo: white "WAY OF THE" over a big SF4-style HADO (yellow-orange-red fill, black brush border) on a black ink splat, with an animated red energy dot in the A | ✅ Done, using the Cafe Felix brush font |
 | Fighters: 3D field, lightning, hover tint, zoom-in bio, move buttons | ✅ Done, using Super SF2 sprite sheets |
 | Soundtracks: select screen, stage map, portraits, flags, auto-play | ✅ Done. The music is placeholder chiptunes. |
 | Franchise data and charts | ✅ Done. **Verify figures:** most rows come from secondary reporting. |
 | Real stage themes (`app/assets/audio/<id>.mp3`) | ⏳ To do |
-| "HADO" logo and brush / pixel fonts (`app/assets/img`, `app/assets/fonts`) | ⏳ To do |
+| Pixel font for the select screen (`app/assets/fonts/pixel.*`) | ⏳ To do |
 | Publish to Tableau Cloud and review live (5-second and takeaway tests) | ⏳ To do |
 
 ## Layout
@@ -52,4 +53,5 @@ Street Fighter and its characters, names and artwork are © Capcom. This is a no
 - **Fighter sprite sheets:** ripped by Lord Zymeth (finaldestinationpixelation.com) and shared on The Spriters Resource.
 - **Select-screen portraits:** ripped by Phatman.
 - **Select-screen artwork** (named portraits, flags, background): captured by GaryCXJK.
+- **Brush font:** Cafe Felix by Jonathan S. Harris (JSHcreates), personal-use licence. It's git-ignored because the licence doesn't allow redistribution; put it at `app/assets/fonts/brush.ttf` to rebuild. A commercial use would need a paid licence.
 - **World map outlines:** Natural Earth (public domain), via `world-atlas`.

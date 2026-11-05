@@ -2,6 +2,9 @@ import React, { useEffect, useRef } from 'react';
 import { makeCoverStrokes, drawSequence } from '../lib/brush.js';
 import { clamp, easeOut, easeInOut } from '../lib/rng.js';
 
+// room around the panel for splatter and ragged stroke ends, so the canvas never shows a hard edge
+const BLEED = 70;
+
 // A DOM panel whose background is painted on with brush strokes when `open`
 // becomes true and pulled off again when it becomes false.
 export default function BrushPanel({ open, seed = 3, color = '#ece6d6', className = '', children, paintMs = 850, onClosed }) {
@@ -26,9 +29,9 @@ export default function BrushPanel({ open, seed = 3, color = '#ece6d6', classNam
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       s.w = r.width;
       s.h = r.height;
-      canvas.width = r.width * dpr;
-      canvas.height = r.height * dpr;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      canvas.width = (r.width + BLEED * 2) * dpr;
+      canvas.height = (r.height + BLEED * 2) * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, BLEED * dpr, BLEED * dpr);
       s.strokes = makeCoverStrokes(r.width * 0.03, r.height * 0.02, r.width * 0.94, r.height * 0.96, seed, {
         color,
         rows: Math.max(4, Math.round(r.height / 120)),
@@ -47,7 +50,7 @@ export default function BrushPanel({ open, seed = 3, color = '#ece6d6', classNam
       s.p = s.from + (s.target - s.from) * (s.target ? easeOut(t) : easeInOut(t));
       if (prev === s.p && !s.dirty) return;
       s.dirty = false;
-      ctx.clearRect(0, 0, s.w, s.h);
+      ctx.clearRect(-BLEED, -BLEED, s.w + BLEED * 2, s.h + BLEED * 2);
       drawSequence(ctx, s.strokes, s.p, { reverse: !s.target, overlap: 0.5 });
       if (!s.target && t >= 1 && prev !== 0) onClosed?.();
     };
@@ -60,7 +63,12 @@ export default function BrushPanel({ open, seed = 3, color = '#ece6d6', classNam
 
   return (
     <div ref={ref} className={`brush-panel ${open ? 'open' : ''} ${className}`}>
-      <canvas ref={canvasRef} className="brush-panel-bg" aria-hidden="true" />
+      <canvas
+        ref={canvasRef}
+        className="brush-panel-bg"
+        style={{ inset: -BLEED, width: `calc(100% + ${BLEED * 2}px)`, height: `calc(100% + ${BLEED * 2}px)` }}
+        aria-hidden="true"
+      />
       <div className="brush-panel-content">{children}</div>
     </div>
   );

@@ -51,7 +51,172 @@ export function makeStroke(path, o = {}) {
     });
     bristles.push({ pts, startLag, endEarly, thick, alpha, gaps });
   }
-  return { bristles, width, core: samples, color: o.color ?? '#ece6d6' };
+  const drops = makeDrops(samples, normals, width, rng, o.splatter ?? 1);
+  return { bristles, drops, width, core: samples, color: o.color ?? '#ece6d6' };
+}
+
+const gauss = (rng) => (rng() + rng() + rng() - 1.5) / 1.5;
+
+/**
+ * Ink splatter around a stroke, in the spirit of sumi-e splash art: blotchy bleed along
+ * the edges, flecks and a fine spray beside it, droplets thrown off where the brush
+ * lands and flicked forward where it lifts. Each drop carries `t`, the point along the
+ * stroke where it appears, so it paints and un-paints with the stroke.
+ */
+function makeDrops(samples, normals, width, rng, amount) {
+  const drops = [];
+  if (!amount || samples.length < 3) return drops;
+  const n = samples.length;
+  let len = 0;
+  for (let i = 1; i < n; i++) len += Math.hypot(samples[i][0] - samples[i - 1][0], samples[i][1] - samples[i - 1][1]);
+  const at = (t) => {
+    const i = Math.round(clamp(t, 0, 1) * (n - 1));
+    const pinch = Math.sin(Math.PI * clamp(t * 1.15 + 0.04, 0, 1)) ** 0.35;
+    return { p: samples[i], nr: normals[i], tg: [normals[i][1], -normals[i][0]], k: 0.55 + 0.45 * pinch };
+  };
+  const push = (x, y, rx, ry, rot, t, a = 1) => drops.push({ x, y, rx: Math.max(0.4, rx), ry: Math.max(0.4, ry), rot, t, a });
+  const ang = (v) => Math.atan2(v[1], v[0]);
+  // bleed lobes that make the edge blotchy rather than combed
+  const nBlots = Math.round((len / (width * 0.5)) * amount);
+  for (let i = 0; i < nBlots; i++) {
+    const t = 0.04 + rng() * 0.9;
+    const { p, nr, tg, k } = at(t);
+    const side = rng() < 0.5 ? -1 : 1;
+    const off = side * width * k * (0.3 + rng() * 0.16);
+    const r = width * (0.03 + rng() ** 2 * 0.05);
+    push(p[0] + nr[0] * off, p[1] + nr[1] * off, r * (1.3 + rng()), r, ang(tg), t);
+  }
+  // flecks just off the edge, bigger ones closer in
+  const nFlecks = Math.round((len / 14) * amount);
+  for (let i = 0; i < nFlecks; i++) {
+    const t = rng();
+    const { p, nr, tg, k } = at(t);
+    const side = rng() < 0.5 ? -1 : 1;
+    const d = rng() ** 1.6;
+    const off = side * width * k * (0.5 + d * 0.95);
+    const r = (0.5 + (1 - d) * rng() ** 3 * width * 0.03) * (1 + rng() * 0.4);
+    push(p[0] + nr[0] * off, p[1] + nr[1] * off, r * (1 + rng() * 1.5), r, ang(tg) + gauss(rng) * 0.6, t, 0.75 + rng() * 0.25);
+  }
+  // fine spray mist
+  const nMist = Math.round((len / 3) * amount);
+  for (let i = 0; i < nMist; i++) {
+    const t = rng();
+    const { p, nr } = at(t);
+    const off = gauss(rng) * width * 1.05;
+    const r = 0.45 + rng() * 0.9;
+    push(p[0] + nr[0] * off, p[1] + nr[1] * off, r, r, 0, t, 0.25 + rng() * 0.45);
+  }
+  // impact splash where the brush lands: drops thrown out radially
+  {
+    const { p } = at(0.03);
+    const nImp = Math.round((6 + rng() * 8) * amount);
+    for (let i = 0; i < nImp; i++) {
+      const a = rng() * Math.PI * 2;
+      const d = width * (0.45 + rng() ** 1.5 * 0.9);
+      const r = width * (0.006 + rng() ** 4 * 0.025);
+      push(p[0] + Math.cos(a) * d, p[1] + Math.sin(a) * d, r * (1.6 + rng() * 2), r, a, 0.03 + rng() * 0.05);
+    }
+  }
+  // flick off the end: a fan of drops carried forward, shrinking with distance
+  {
+    const { p, nr, tg } = at(0.99);
+    const nFlick = Math.round((10 + rng() * 14) * amount);
+    for (let i = 0; i < nFlick; i++) {
+      const d = rng() ** 1.4;
+      const fwd = width * (0.25 + d * 1.9);
+      const side = gauss(rng) * width * (0.25 + d * 0.5);
+      const r = width * (0.005 + (1 - d) * rng() ** 3 * 0.03);
+      const dir = Math.atan2(tg[1] * fwd + nr[1] * side, tg[0] * fwd + nr[0] * side);
+      push(p[0] + tg[0] * fwd + nr[0] * side, p[1] + tg[1] * fwd + nr[1] * side, r * (1.5 + d * 3), r, dir, 0.97 + rng() * 0.03);
+    }
+  }
+  return drops;
+}
+
+function drawDrops(ctx, drops, progress, reverse, alpha) {
+  if (!drops) return;
+  for (const d of drops) {
+    if (reverse ? d.t < 1 - progress : d.t > progress) continue;
+    ctx.globalAlpha = d.a * alpha;
+    ctx.beginPath();
+    ctx.ellipse(d.x, d.y, d.rx, d.ry, d.rot, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+/**
+ * An ink splash: a ragged blot with spikes and satellite drops, like ink thrown at the
+ * paper. `progress` grows it out from the centre (or shrinks it when un-painting).
+ */
+export function makeSplat(cx, cy, r, seed = 1, o = {}) {
+  const rng = makeRng(seed);
+  const N = 72;
+  const lobes = Array.from({ length: 5 }, () => [rng() * Math.PI * 2, 0.6 + rng() * 2.4, rng() * 0.12]);
+  const spikes = Array.from({ length: Math.round(6 + rng() * 6) }, () => ({
+    a: rng() * Math.PI * 2,
+    len: 0.95 + rng() ** 2 * 0.75 * (o.spikeLen ?? 1),
+    w: 0.06 + rng() * 0.08,
+    bend: (rng() - 0.5) * 0.5,
+  }));
+  const rim = [];
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2;
+    let rr = 0.78 + (rng() - 0.5) * 0.12;
+    for (const [ph, f, amp] of lobes) rr += Math.sin(a * Math.round(f + 2) + ph) * amp;
+    rim.push([a, rr]);
+  }
+  const drops = [];
+  for (const s of spikes) {
+    // a bead at the end of each spike, and a few loose drops around it
+    drops.push({ a: s.a + s.bend * 0.25, d: s.len + 0.08, r: s.w * 0.7 * (o.beads ?? 1), e: 1.3 });
+    for (let k = 0; k < 2; k++) drops.push({ a: s.a + (rng() - 0.5) * 0.25, d: s.len + 0.1 + rng() * 0.5 * (o.spread ?? 1), r: (0.012 + rng() * 0.03) * (o.beads ?? 1), e: 1.5 + rng() * 2 });
+  }
+  const spread = o.spread ?? 1;
+  for (let k = 0; k < 60; k++) drops.push({ a: rng() * Math.PI * 2, d: 0.9 + rng() ** 1.5 * 0.9 * spread, r: (0.004 + rng() ** 4 * 0.04) * (0.5 + spread * 0.5), e: 1 + rng() * 2 });
+  return { cx, cy, r, rim, spikes, drops, color: o.color ?? '#05070d', sx: o.sx ?? 1.35, sy: o.sy ?? 1, rot: o.rot ?? 0 };
+}
+
+export function drawSplat(ctx, s, progress) {
+  if (progress <= 0) return;
+  const g = clamp(progress, 0, 1);
+  const body = 1 - (1 - clamp(g * 1.6, 0, 1)) ** 3; // the blot lands first
+  const reach = 1 - (1 - clamp((g - 0.15) / 0.85, 0, 1)) ** 2; // spikes and drops fly out after
+  ctx.save();
+  ctx.translate(s.cx, s.cy);
+  ctx.rotate(s.rot);
+  ctx.scale(s.r * s.sx, s.r * s.sy);
+  ctx.fillStyle = s.color;
+  ctx.beginPath();
+  s.rim.forEach(([a, rr], i) => {
+    const x = Math.cos(a) * rr * body;
+    const y = Math.sin(a) * rr * body;
+    if (i) ctx.lineTo(x, y);
+    else ctx.moveTo(x, y);
+  });
+  ctx.closePath();
+  ctx.fill();
+  // tendrils and drops scale with the blot, so nothing floats loose mid-animation
+  ctx.scale(body, body);
+  for (const sp of s.spikes) {
+    const L = 0.6 + (sp.len - 0.6) * reach;
+    const c = Math.cos(sp.a);
+    const sn = Math.sin(sp.a);
+    const bx = -sn * sp.bend * L * 0.4;
+    const by = c * sp.bend * L * 0.4;
+    ctx.beginPath();
+    ctx.moveTo(c * 0.55 - sn * sp.w, sn * 0.55 + c * sp.w);
+    ctx.quadraticCurveTo(c * L * 0.7 - sn * sp.w * 0.5 + bx, sn * L * 0.7 + c * sp.w * 0.5 + by, c * L + bx * 0.6, sn * L + by * 0.6);
+    ctx.quadraticCurveTo(c * L * 0.7 + sn * sp.w * 0.5 + bx, sn * L * 0.7 - c * sp.w * 0.5 + by, c * 0.55 + sn * sp.w, sn * 0.55 - c * sp.w);
+    ctx.fill();
+  }
+  for (const d of s.drops) {
+    if (reach <= 0) break;
+    const dd = 0.5 + (d.d - 0.5) * reach;
+    ctx.beginPath();
+    ctx.ellipse(Math.cos(d.a) * dd, Math.sin(d.a) * dd, d.r * d.e, d.r, d.a, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 function resample(path, step) {
@@ -96,18 +261,27 @@ export function drawStroke(ctx, stroke, progress, opts = {}) {
     const c0 = reverse ? Math.max(0.04, 1 - progress) : 0.04;
     const c1 = reverse ? 0.9 : Math.min(0.9, progress * 1.02);
     if (c1 > c0) {
+      // tapered: thick through the middle, thinning towards both ends so it never shows a hard edge
       ctx.globalAlpha = opts.alpha ?? 1;
-      ctx.lineWidth = stroke.width * 0.42;
-      ctx.lineCap = 'butt';
-      ctx.beginPath();
-      for (let i = Math.floor(c0 * (n - 1)); i <= Math.floor(c1 * (n - 1)); i++) {
-        const p = stroke.core[i];
-        if (i === Math.floor(c0 * (n - 1))) ctx.moveTo(p[0], p[1]);
-        else ctx.lineTo(p[0], p[1]);
+      ctx.lineCap = 'round';
+      const i0 = Math.floor(c0 * (n - 1));
+      const i1 = Math.floor(c1 * (n - 1));
+      for (let i = i0 + 1; i <= i1; i++) {
+        const t = i / (n - 1);
+        const taper = Math.sin(Math.PI * clamp((t - 0.02) / 0.9, 0, 1)) ** 0.6;
+        if (taper <= 0.02) continue;
+        ctx.lineWidth = stroke.width * 0.42 * taper;
+        ctx.beginPath();
+        ctx.moveTo(stroke.core[i - 1][0], stroke.core[i - 1][1]);
+        ctx.lineTo(stroke.core[i][0], stroke.core[i][1]);
+        ctx.stroke();
       }
-      ctx.stroke();
       ctx.lineCap = 'round';
     }
+  }
+  if (opts.splatter !== false) {
+    ctx.fillStyle = opts.color ?? stroke.color;
+    drawDrops(ctx, stroke.drops, progress, reverse, opts.alpha ?? 1);
   }
   for (const b of stroke.bristles) {
     const n = b.pts.length;

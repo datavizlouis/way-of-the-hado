@@ -8,10 +8,10 @@ Use only assets you have the rights to use. Street Fighter characters, logos, sp
 
 | Slot | What it does |
 |---|---|
-| `img/hado-logo.png` | Replaces the "HADO" placeholder logotype in the intro title. Use a transparent PNG. |
+| `img/hado-logo.png` | Optional. Replaces the built-in SF4-style "WAY OF THE HADO" logotype (drawn in code from the brush font) with your own artwork. Use a transparent PNG. |
 | `img/story/<chapter>.png` | Optional ink illustration for an intro chapter (1–9). It's blended into the paper at about 22% opacity. Sumi-e style art works best; Higgsfield can generate it. |
 | `img/portraits/<id>.png` | Portrait for a select-screen tile. Square, ideally 48–64 px. `<id>` is the `Id` column of `data/characters.csv` (`ryu`, `ken`, `chunli`, …). |
-| `fonts/brush.(woff2\|ttf\|otf)` | Brush font for "Way of the", headings and move buttons. Becomes the `HadoBrush` family. |
+| `fonts/brush.(woff2\|ttf\|otf)` | Brush font for the logo, headings and move buttons. Becomes the `HadoBrush` family. We use Cafe Felix (personal use, git-ignored). Its free build swaps digits and punctuation for a watermark, so `build.mjs` limits it to letters and space through `unicode-range`; other characters fall back to the next font. |
 | `fonts/display.(woff2\|ttf\|otf)` | Display font for the placeholder "HADO" logotype and the KPIs. Becomes `HadoDisplay`. |
 | `fonts/pixel.(woff2\|ttf\|otf)` | Pixel font for the soundtrack screen. Becomes `HadoPixel`. |
 | `audio/<id>.mp3` | Stage theme for a fighter in the soundtrack section, played on loop. `.ogg`, `.m4a` and `.wav` also work. |

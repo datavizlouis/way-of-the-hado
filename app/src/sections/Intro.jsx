@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { makeCoverStrokes, makeStroke, makeEnso, drawSequence, drawStroke } from '../lib/brush.js';
+import { makeCoverStrokes, makeEnso, drawSequence, drawStroke } from '../lib/brush.js';
 import { makeRng, clamp, easeInOut, easeOut } from '../lib/rng.js';
 import { assetUrl, loadImage } from '../assets.js';
 import { useInView } from '../lib/useInView.js';
+import { renderLogo, logoSplats, drawSplat } from '../lib/logo.js';
+import { makeAura, drawAura } from '../lib/aura.js';
 
 const KANJI = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
 const PAPER = '#ece6d6';
@@ -34,28 +36,9 @@ function buildLayout(step, chapters, W, H) {
   if (step === 0) {
     const cx = W / 2;
     const cy = H * 0.47;
-    const sw = Math.min(W * 0.92, 1200);
-    const strokes = [
-      makeStroke(
-        [
-          [cx - sw / 2, cy - H * 0.05],
-          [cx - sw * 0.15, cy - H * 0.09],
-          [cx + sw * 0.2, cy - H * 0.06],
-          [cx + sw / 2, cy - H * 0.1],
-        ],
-        { width: H * 0.24, seed: 101, dry: 0.7, color: PAPER },
-      ),
-      makeStroke(
-        [
-          [cx + sw * 0.46, cy + H * 0.1],
-          [cx + sw * 0.1, cy + H * 0.13],
-          [cx - sw * 0.25, cy + H * 0.09],
-          [cx - sw * 0.44, cy + H * 0.12],
-        ],
-        { width: H * 0.2, seed: 202, dry: 0.75, color: PAPER },
-      ),
-    ];
-    return { kind: 'title', strokes, cx, cy, sw };
+    // no paper strokes on the title: the logo brings its own ink splat
+    const strokes = [];
+    return { kind: 'title', strokes, cx, cy };
   }
   const ch = chapters[step - 1];
   const px = narrow ? W * 0.05 : W * 0.36;
@@ -69,20 +52,7 @@ function buildLayout(step, chapters, W, H) {
 }
 
 function drawContent(ctx, L, W, H, logoImg, storyImg) {
-  if (L.kind === 'title') {
-    ctx.save();
-    ctx.globalCompositeOperation = 'source-atop';
-    ctx.fillStyle = INK;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const fs = Math.min(W * 0.075, 110);
-    ctx.font = `${fs}px ${BRUSH_FONT}`;
-    ctx.fillText('Way of the', L.cx, L.cy - H * 0.115);
-    ctx.font = `italic ${Math.max(14, fs * 0.22)}px ${BODY_FONT}`;
-    ctx.fillText('A visual history of Street Fighter  ·  1987 – today', L.cx, L.cy + H * 0.135);
-    ctx.restore();
-    return;
-  }
+  if (L.kind === 'title') return;
   const ch = L.ch;
   if (!ch) return;
   const pad = Math.max(24, L.pw * 0.07);
@@ -123,8 +93,60 @@ function drawContent(ctx, L, W, H, logoImg, storyImg) {
   ctx.restore();
 }
 
-function drawTitleLogo(ctx, L, W, H, logoImg, a) {
+// the built-in logotype, rendered once per width (and again once the brush font loads)
+const logoCache = { key: '', logo: null, splats: null, aura: null };
+export function resetLogoCache() {
+  logoCache.key = '';
+}
+function builtLogo(W, H, dpr) {
+  const w = Math.round(Math.min(W * 0.74, H * 1.1, 1000));
+  const key = `${w}@${dpr}`;
+  if (logoCache.key !== key) {
+    logoCache.key = key;
+    logoCache.logo = renderLogo(w, dpr);
+    logoCache.splats = logoSplats(w);
+    const { dot } = logoCache.logo;
+    logoCache.aura = makeAura(dot.x, dot.y, dot.fs);
+  }
+  return logoCache;
+}
+
+function drawTitleLogo(ctx, L, W, H, logoImg, a, dpr, reverse, now) {
   if (a <= 0) return;
+  if (!logoImg) {
+    // the ink splat lands first, the lettering slams in over it, then the red energy ignites
+    const { logo, splats, aura } = builtLogo(W, H, dpr);
+    const x0 = L.cx - logo.w / 2;
+    const y0 = L.cy - logo.h / 2;
+    ctx.save();
+    ctx.translate(x0, y0);
+    const sp = reverse ? a : clamp(a * 1.6, 0, 1);
+    splats.forEach((s, i) => drawSplat(ctx, s, clamp(sp * 1.3 - i * 0.12, 0, 1)));
+    ctx.restore();
+    const la = reverse ? a : clamp((a - 0.25) / 0.75, 0, 1);
+    if (la > 0) {
+      const s = 1.18 - 0.18 * easeOut(la);
+      ctx.save();
+      ctx.globalAlpha = clamp(la * 1.5, 0, 1);
+      ctx.translate(L.cx, L.cy);
+      ctx.scale(s, s);
+      const auraA = reverse ? la : clamp((la - 0.5) / 0.5, 0, 1);
+      ctx.translate(-logo.w / 2, -logo.h / 2);
+      drawAura(ctx, aura, now, auraA, 'back');
+      ctx.drawImage(logo.canvas, 0, 0, logo.w, logo.h);
+      drawAura(ctx, aura, now, auraA, 'front');
+      ctx.restore();
+    }
+    ctx.save();
+    ctx.globalAlpha = clamp(la, 0, 1) * 0.85;
+    ctx.fillStyle = PAPER;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.font = `italic ${clamp(W * 0.014, 14, 19)}px ${BODY_FONT}`;
+    ctx.fillText('A visual history of Street Fighter  ·  1987 – today', L.cx, Math.min(H - 90, L.cy + Math.max(logo.h / 2, H * 0.24) + 44));
+    ctx.restore();
+    return;
+  }
   ctx.save();
   ctx.globalAlpha = clamp(a, 0, 1);
   const s = 0.85 + 0.15 * easeOut(clamp(a, 0, 1));
@@ -338,6 +360,9 @@ export default function Intro({ chapters, height }) {
       return L.get(i);
     };
     resize();
+    if (document.fonts && document.fonts.load) {
+      document.fonts.load('40px "HadoBrush"').then(resetLogoCache, () => {});
+    }
     const ro = new ResizeObserver(resize);
     ro.observe(wrapRef.current);
 
@@ -376,7 +401,7 @@ export default function Intro({ chapters, height }) {
       drawContent(pctx, L, W, H, imgs.current.logo, imgs.current.story[L.ch?.Chapter]);
       pctx.globalCompositeOperation = 'source-over';
       if (L.kind === 'title') {
-        drawTitleLogo(pctx, L, W, H, imgs.current.logo, reverse ? p : (p - 0.35) / 0.65);
+        drawTitleLogo(pctx, L, W, H, imgs.current.logo, reverse ? p : (p - 0.35) / 0.65, dpr, reverse, now);
       } else {
         drawChapterInk(pctx, L, W, H, p, reverse);
       }
