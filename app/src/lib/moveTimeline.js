@@ -8,6 +8,7 @@
 //          their lowest pixels (the feet), which can be a claw or a trailing boot on a dive,
 //          and would throw the body backwards.
 //   anchors { frame: anchorX } overrides, for frames whose art drifts across the sheet.
+//   sfx    a sound effect (assets/audio/<sfx>.mp3) played as the move starts
 //
 // To speed up one phase, raise `rate` and repeat the frames of the other phases in `seq`.
 //   path   (s) => [dx, dy, alpha], offset in sprite pixels: forward = right, up = positive.
@@ -40,12 +41,12 @@ const flight = { rate: 0.55, at: (s, n, dx, dy) => [dx * bump(s, 0, n), dy * bum
 
 const TIMELINES = {
   ryu: {
-    Hadoken: { seq: [0, 1, 2, 3, 3, 3, 3, 3], fire: 3 },
+    Hadoken: { seq: [0, 1, 2, 3, 3, 3, 3, 3], fire: 3, sfx: 'hadouken' },
     Shoryuken: shoryuken,
     'Tatsumaki Senpukyaku': tatsumaki,
   },
   ken: {
-    Hadoken: { seq: [0, 1, 2, 3, 3, 3, 3, 3], fire: 3 },
+    Hadoken: { seq: [0, 1, 2, 3, 3, 3, 3, 3], fire: 3, sfx: 'hadouken' },
     Shoryuken: shoryuken,
     'Tatsumaki Senpukyaku': tatsumaki,
   },
@@ -139,6 +140,9 @@ const TIMELINES = {
     },
   },
 };
+
+/** Every sound effect a move uses, to load ahead of time. */
+export const MOVE_SFX = [...new Set(Object.values(TIMELINES).flatMap((moves) => Object.values(moves).map((m) => m.sfx).filter(Boolean)))];
 
 /** The move's timeline, or an empty one for a move that plays its frames on the spot. */
 export function moveTimeline(id, moveName) {

@@ -141,7 +141,7 @@ export function playTrack(id) {
 // Sound effects: short one-shots over the music, kept decoded so they land on their cue.
 const sfx = new Map(); // id -> Promise<AudioBuffer>
 // silence at the start of a file, in seconds, skipped so the sound lands on its cue
-const SFX_LEAD = { shoryuken: 0.3 };
+const SFX_LEAD = { shoryuken: 0.3, hadouken: 0.15 };
 function loadSfx(id) {
   if (!sfx.has(id)) {
     const p = decodeBytes(id);

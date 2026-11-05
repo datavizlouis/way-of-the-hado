@@ -5,7 +5,8 @@
 import * as THREE from 'three';
 import { Fighter, SPRITE_SIZE } from './fighter.js';
 import { makeRng, clamp, lerp, easeInOut } from './rng.js';
-import { PROJECTILES } from './moveTimeline.js';
+import { PROJECTILES, MOVE_SFX, moveTimeline } from './moveTimeline.js';
+import { playSfx, preloadSfx } from './player.js';
 
 const PIX = 3;
 const SPACING = 2.85; // between neighbours in one row: wide enough that no two fighters touch
@@ -324,6 +325,7 @@ export class FieldScene {
     // de-sync idles
     this.fighters.forEach((F) => F.f.update(F.phase));
 
+    preloadSfx(MOVE_SFX);
     this.raycaster = new THREE.Raycaster();
     this.pointer = new THREE.Vector2(-9, -9);
     this.camFrom = null;
@@ -421,7 +423,10 @@ export class FieldScene {
 
   playMove(name) {
     const F = this.fighters.find((x) => x.c.Id === this.selected);
-    if (F) F.f.setMove(name);
+    if (!F) return;
+    F.f.setMove(name);
+    const { sfx } = moveTimeline(F.c.Id, name);
+    if (sfx) playSfx(sfx);
   }
 
   onFighterEvent(ev, fighter) {
