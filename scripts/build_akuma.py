@@ -3,8 +3,8 @@
 
 The sheet has no panel dividers, so the frames are found by row bands and column gaps
 inside the rows that hold the sequence (stance, foot stomp, body turning black, red aura
-and the 天 kanji, blue rings, back to stance). Run after build_atlas.py, which rewrites
-sprites.json.
+and the 天 kanji, blue rings, back to stance), plus his idle stance from the top of the
+sheet. Run after build_atlas.py, which rewrites sprites.json.
 
 Reads   app/assets/sprites/raw/akuma_deekman.png   (not committed: Capcom artwork)
 Writes  app/assets/sprites/akuma.png               atlas, background keyed out
@@ -24,6 +24,9 @@ BG = np.array([144, 200, 232])
 BANDS = [(1876, 1977), (1977, 2093), (2096, 2206), (2210, 2330)]
 # columns where two touching frames in a row must be split
 FORCED_SPLITS = {0: [577]}
+# his idle stance (sheet px): y range, and where it starts, right of the portrait
+IDLE_BAND = (92, 168)
+IDLE_X0 = 76
 
 
 def frames_in_band(a, y0, y1, band_no):
@@ -62,19 +65,20 @@ def frames_in_band(a, y0, y1, band_no):
 def main():
     a = np.array(Image.open(RAW).convert('RGB')).astype(int)
     tiles = []
-    for b, (y0, y1) in enumerate(BANDS):
-        for (x0, ty0, x1, ty1) in frames_in_band(a, y0, y1, b):
-            t = a[ty0:ty1, x0:x1]
-            keep = np.abs(t - BG).sum(-1) > 30
-            ys, xs = np.nonzero(keep)
-            t, keep = t[ys.min():ys.max() + 1, xs.min():xs.max() + 1], keep[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
-            dark = t.sum(-1) < 200
-            rows = np.nonzero(dark.sum(1) >= 3)[0]
-            feet = int(rows.max())  # bottom of the shadow under his feet
-            low = dark[max(0, feet - 20):feet + 1]
-            anchor = int(round(np.nonzero(low)[1].mean()))
-            rgba = np.dstack([t.astype(np.uint8), (keep * 255).astype(np.uint8)])
-            tiles.append((rgba, anchor, feet))
+    idle_boxes = [(x0 + IDLE_X0, y0, x1 + IDLE_X0, y1) for (x0, y0, x1, y1) in frames_in_band(a[:, IDLE_X0:], *IDLE_BAND, -1)]
+    demon_boxes = [box for b, (y0, y1) in enumerate(BANDS) for box in frames_in_band(a, y0, y1, b)]
+    for (x0, ty0, x1, ty1) in idle_boxes + demon_boxes:
+        t = a[ty0:ty1, x0:x1]
+        keep = np.abs(t - BG).sum(-1) > 30
+        ys, xs = np.nonzero(keep)
+        t, keep = t[ys.min():ys.max() + 1, xs.min():xs.max() + 1], keep[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+        dark = t.sum(-1) < 200
+        rows = np.nonzero(dark.sum(1) >= 3)[0]
+        feet = int(rows.max())  # bottom of the shadow under his feet
+        low = dark[max(0, feet - 20):feet + 1]
+        anchor = int(round(np.nonzero(low)[1].mean()))
+        rgba = np.dstack([t.astype(np.uint8), (keep * 255).astype(np.uint8)])
+        tiles.append((rgba, anchor, feet))
     # shelf-pack
     W = 1024
     x = y = shelf = 0
@@ -98,10 +102,10 @@ def main():
     sprites = json.loads(sj.read_text())
     sprites['akuma'] = {
         'file': 'akuma.png',
-        'anims': {'idle': {'fps': 6, 'frames': frames[:1]}, 'beat:demon': {'fps': 7, 'frames': frames}},
+        'anims': {'idle': {'fps': 8, 'frames': frames[:len(idle_boxes)]}, 'beat:demon': {'fps': 7, 'frames': frames[len(idle_boxes):]}},
     }
     sj.write_text(json.dumps(sprites, separators=(',', ':')))
-    print('akuma', len(frames), 'frames')
+    print('akuma', len(idle_boxes), 'idle +', len(demon_boxes), 'demon frames')
 
 
 if __name__ == '__main__':

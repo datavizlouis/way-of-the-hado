@@ -6,6 +6,8 @@
 import { getSpriteConfig, getImage } from '../assets.js';
 import { makeRng, clamp, easeInOut, easeOut } from './rng.js';
 import { makeSplat, drawSplat } from './brush.js';
+import { playSfx } from './player.js';
+import { drawCursed } from './cursedFx.js';
 
 const INK = '#141a2b';
 
@@ -63,6 +65,16 @@ function spark(ctx, x, y, r, t, seed = 1) {
   ctx.restore();
 }
 
+/** Play a sound each time a looping scene's clock passes `at` (re-arms when it comes round). */
+function cue(env, id, tt, at) {
+  const armed = (env.L.cues ||= {});
+  if (tt < at) armed[id] = true;
+  else if (armed[id]) {
+    armed[id] = false;
+    playSfx(id);
+  }
+}
+
 /** Ground line that centres `tall` sprite px of action vertically in the art box. */
 const groundFor = (A, tall, k) => Math.round(A.y + A.h / 2 + (tall * k) / 2);
 
@@ -71,7 +83,7 @@ const scaleFor = (A, tall, across) => Math.max(2, Math.floor(Math.min((A.h * 0.8
 
 // ------------------------------------------------------------------ 1. fist bump
 
-function fistBump(ctx, A, t) {
+function fistBump(ctx, A, t, env) {
   const idle = [anim('ryu', 'idle'), anim('ken', 'idle')];
   const punch = [anim('ryu', 'beat:punch'), anim('ken', 'beat:punch')];
   if (!idle[0] || !idle[1] || !punch[0] || !punch[1]) return false;
@@ -92,24 +104,34 @@ function fistBump(ctx, A, t) {
     else drawFrame(ctx, punch[i], idx, x, ground, k, { flip: i === 1 });
   });
   spark(ctx, cx, ground - FIST_Y * k, 16 * k, (tt - 1.5) / 0.3, 7);
+  cue(env, 'coin', tt, 1.5);
   return true;
 }
 
 // ------------------------------------------------------------------ 2. raging demon
 
-// Akuma's win pose: he stands, stomps, his body goes black in a red aura with the 天
-// kanji flaring above him and blue rings pulsing out, then he stands again.
+const STOMP_FRAME = 5; // the raised foot lands, and the first blue ring appears
+
+// Akuma's win pose: he breathes in his idle stance, stomps, his body goes black in a red
+// aura with the 天 kanji flaring above him and blue rings pulsing out, then he stands again.
 function ragingDemon(ctx, A, t, env) {
   const seq = anim('akuma', 'beat:demon');
-  if (!seq) return false;
+  const idle = anim('akuma', 'idle');
+  if (!seq || !idle) return false;
   const k = scaleFor(A, 110, 110);
   const ground = groundFor(A, 82, k);
   const x = A.x + A.w / 2;
   const n = seq.frames.length;
   const run = n / seq.fps;
-  const P = 1 + run + 1.2;
+  const breathe = idle.frames.length / idle.fps; // one full idle cycle before the stomp
+  const P = breathe + run + 1.2;
   const tt = t % P;
-  const idx = tt < 1 ? 0 : tt < 1 + run ? Math.floor((tt - 1) * seq.fps) : n - 1;
+  cue(env, 'akuma', tt, breathe + STOMP_FRAME / seq.fps);
+  if (tt < breathe) {
+    drawFrame(ctx, idle, loopIdx(idle, tt), x, ground, k, { flip: !env.L?.artLeft });
+    return true;
+  }
+  const idx = tt < breathe + run ? Math.floor((tt - breathe) * seq.fps) : n - 1;
   // a low red glow while the Satsui no Hado is out (the dark frames)
   const dark = idx >= 5 && idx < n - 1;
   if (dark) {
@@ -125,34 +147,68 @@ function ragingDemon(ctx, A, t, env) {
 
 // ------------------------------------------------------------------ 3. shoryuken on sagat
 
+const RYU_EYE = [25, 8]; // his eye in the idle frames (px from the frame's top left, same in all four)
+
+/** The Dark Hado surfacing: Ryu's eye burns red, with a pulsing glow. */
+function darkHadoEye(ctx, a, idx, x, ground, k, eye, t) {
+  if (eye <= 0) return;
+  const [, , , sh, ax, l0 = 0] = a.frames[idx];
+  const px = Math.round(x) + (RYU_EYE[0] - ax) * k;
+  const py = Math.round(ground - l0 * k) - sh * k + RYU_EYE[1] * k;
+  ctx.save();
+  ctx.globalAlpha *= eye;
+  const R = k * (9 + 2.5 * Math.sin(t * 7));
+  const g = ctx.createRadialGradient(px + k / 2, py + k / 2, 0, px + k / 2, py + k / 2, R);
+  g.addColorStop(0, 'rgba(255,40,40,0.95)');
+  g.addColorStop(0.35, 'rgba(235,20,30,0.45)');
+  g.addColorStop(1, 'rgba(235,20,30,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(px - R, py - R, R * 2, R * 2);
+  ctx.fillStyle = '#d42a30';
+  ctx.fillRect(px - k, py, k, k);
+  ctx.fillStyle = '#ff2a30';
+  ctx.fillRect(px, py, k, k);
+  ctx.restore();
+}
+
 function shoryuken(ctx, A, t, env) {
   const r = { idle: anim('ryu', 'idle'), srk: anim('ryu', 'Shoryuken') };
   const s = { idle: anim('sagat', 'idle'), hit: anim('sagat', 'beat:hit'), ko: anim('sagat', 'beat:ko') };
   if (!r.idle || !r.srk || !s.idle || !s.hit || !s.ko) return false;
-  const k = scaleFor(A, 120, 160);
-  const ground = groundFor(A, 106, k);
+  const k = scaleFor(A, 108, 155);
+  const ground = groundFor(A, 130, k); // low enough that the higher jump stays on the splat
   const x1 = A.x + A.w * 0.3;
   const x2 = x1 + 58 * k;
-  const P = 5;
+  const JUMP = 2.6; // the eye and the curse build during the idle before this
+  const P = 6.6;
   const tt = t % P;
+  cue(env, 'shoryuken', tt, JUMP);
   // Ryu: idle, then a 7-frame Shoryuken that leaves the ground mid-way
-  const RISE = [0, 0, 2, 24, 40, 26, 0];
+  const RISE = [0, 0, 4, 36, 60, 40, 0];
   const STEP = [0, 4, 8, 12, 12, 12, 6]; // the uppercut carries Ryu forward into Sagat
-  if (tt >= 1 && tt < 1 + 7 / 12) {
-    const i = Math.floor((tt - 1) * 12);
-    drawFrame(ctx, r.srk, i, x1 + STEP[i] * k, ground, k, { lift: RISE[i] });
-  } else drawFrame(ctx, r.idle, loopIdx(r.idle, t), x1, ground, k);
+  // the curse builds through the idle, stays on him through the move, and leaves once he lands
+  const curse = clamp((tt - 0.3) / 1.2, 0, 1) * (1 - clamp((tt - (JUMP + 0.8)) / 0.7, 0, 1));
+  const inMove = tt >= JUMP && tt < JUMP + 7 / 12;
+  const i = inMove ? Math.floor((tt - JUMP) * 12) : 0;
+  const body = inMove ? r.srk : r.idle;
+  const idx = inMove ? i : loopIdx(r.idle, t);
+  const rx = inMove ? x1 + STEP[i] * k : x1;
+  const lift = inMove ? RISE[i] : 0;
+  drawCursed(ctx, body, idx, rx, ground, k, tt, curse, 'back', lift);
+  drawFrame(ctx, body, idx, rx, ground, k, { lift });
+  drawCursed(ctx, body, idx, rx, ground, k, tt, curse, 'front', lift);
+  if (!inMove && tt < JUMP) darkHadoEye(ctx, r.idle, idx, x1, ground, k, clamp((tt - 0.3) / 0.8, 0, 1), tt);
   // Sagat: idle, struck on the rising frame, thrown back to the floor, then back up
-  const HIT = 1.25;
+  const HIT = JUMP + 0.25;
   if (tt < HIT) drawFrame(ctx, s.idle, loopIdx(s.idle, t), x2, ground, k, { flip: true });
   else if (tt < HIT + 0.3) drawFrame(ctx, s.hit, Math.floor((tt - HIT) / 0.1), x2, ground, k, { flip: true });
   else {
     const kt = tt - HIT - 0.3;
     const i = Math.min(s.ko.frames.length - 1, Math.floor(kt * 8));
     const push = easeOut(clamp(kt / 0.6, 0, 1)) * 34 * k;
-    const fade = tt > 4.2 ? 1 - clamp((tt - 4.2) / 0.3, 0, 1) : 1;
+    const fade = tt > P - 0.8 ? 1 - clamp((tt - (P - 0.8)) / 0.3, 0, 1) : 1;
     drawFrame(ctx, s.ko, i, x2 + push, ground, k, { flip: true, alpha: fade });
-    if (tt > 4.5) drawFrame(ctx, s.idle, 0, x2, ground, k, { flip: true, alpha: (tt - 4.5) / 0.5 });
+    if (tt > P - 0.5) drawFrame(ctx, s.idle, 0, x2, ground, k, { flip: true, alpha: (tt - (P - 0.5)) / 0.5 });
   }
   spark(ctx, x1 + 40 * k, ground - 72 * k, 18 * k, (tt - HIT) / 0.3, 3);
   return true;
@@ -160,16 +216,17 @@ function shoryuken(ctx, A, t, env) {
 
 // ------------------------------------------------------------------ 4. psycho crusher
 
-function psychoCrusher(ctx, A, t) {
+function psychoCrusher(ctx, A, t, env) {
   const idle = anim('bison', 'idle');
   const pc = anim('bison', 'Psycho Crusher');
   if (!idle || !pc) return false;
   const k = scaleFor(A, 100, 180);
   const ground = groundFor(A, 83, k);
-  const xa = A.x + A.w * 0.8;
-  const xb = A.x + A.w * 0.2;
+  const xa = A.x + A.w * 0.78;
+  const xb = A.x + A.w * 0.3;
   const P = 6.4;
   const tt = t % P;
+  cue(env, 'psycho_crusher', tt, 1); // only on the right-to-left crossing
   // one crossing: wind-up (frames 0-2), spinning flight (3-6 looped), landing (7)
   const crossing = (u, from, to) => {
     const flip = to < from; // native sprite faces right
@@ -363,9 +420,9 @@ function streetIntro(ctx, A, t) {
   }
   // onto the page: scaled up crisply, then cut to an ink-splat shape so the scene
   // bleeds out in spikes and drops instead of ending in a hard rectangle
-  const k = Math.max(1, Math.floor(Math.min(A.w / IW, A.h / IH)));
-  const w = SW * k;
-  const h = SH * k;
+  const k = Math.max(1, Math.floor(Math.min(A.w / IW, A.h / IH) * 4) / 4); // in quarter steps
+  const w = Math.round(SW * k);
+  const h = Math.round(SH * k);
   const iw = IW * k; // the part the splat body covers
   const ih = IH * k;
   const x = Math.round(A.x + (A.w - w) / 2);
@@ -375,8 +432,8 @@ function streetIntro(ctx, A, t) {
     shapeCanvas = canvas(w, h);
     maskSplats = [
       makeSplat(w / 2, h * 0.5, ih * 0.6, 2024, { sx: (iw / ih) * 0.8, sy: 1.0, spikeLen: 0.3, spread: 0.2, beads: 0.35 }),
-      makeSplat(w / 2 - iw * 0.23, h / 2 + ih * 0.06, ih * 0.42, 2031, { sx: 1.25, sy: 1.05, spikeLen: 0.3, spread: 0.2, beads: 0.3 }),
-      makeSplat(w / 2 + iw * 0.23, h / 2 - ih * 0.06, ih * 0.42, 2047, { sx: 1.25, sy: 1.05, spikeLen: 0.3, spread: 0.2, beads: 0.3 }),
+      makeSplat(w / 2 - iw * 0.23, h / 2 + ih * 0.06, ih * 0.42, 2031, { sx: 0.95, sy: 1.05, spikeLen: 0.3, spread: 0.2, beads: 0.3 }),
+      makeSplat(w / 2 + iw * 0.23, h / 2 - ih * 0.06, ih * 0.42, 2047, { sx: 0.95, sy: 1.05, spikeLen: 0.3, spread: 0.2, beads: 0.3 }),
       makeSplat(w / 2, h / 2 - ih * 0.2, ih * 0.32, 2053, { sx: 1.6, sy: 1, spikeLen: 0.3, spread: 0.2, beads: 0.3 }),
     ];
     // the splat shape, drawn once as a single mask

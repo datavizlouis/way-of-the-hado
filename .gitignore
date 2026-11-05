@@ -17,3 +17,7 @@ app/assets/img/select-bg.png
 app/assets/fonts/
 # story beat pictures (the S.I.N. emblem is Capcom artwork)
 app/assets/img/story/
+app/assets/img/hadoken.png
+# VGM rips of the Capcom soundtrack
+app/assets/music/
+tableau/Packages/*/content/src/audio/

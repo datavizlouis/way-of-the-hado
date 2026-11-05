@@ -2,7 +2,7 @@
 // A stroke is generated once (deterministic) and can then be drawn at any
 // progress 0..1, which is what drives the paint / un-paint animation.
 
-import { makeRng, lerp, clamp } from './rng.js';
+import { makeRng, clamp } from './rng.js';
 
 /**
  * Build a stroke from a polyline path.
@@ -322,54 +322,101 @@ export function drawStroke(ctx, stroke, progress, opts = {}) {
 }
 
 /**
- * A set of horizontal sweeps that together cover a rectangle — the
- * "paint the wall" pattern used to reveal a panel. Strokes run sequentially.
+ * A splat shaped to hold a rectangle of content: a rounded (superellipse) blob covering
+ * x,y,w,h, with spikes spaced evenly round the rim and a controlled number of loose drops.
+ * Unlike makeSplat, its outline stays predictable however it is seeded.
+ * o: color, spikes (count), spikeLen (px), rough (0..1 rim wobble), drops (count), dropReach (px)
  */
-export function makeCoverStrokes(x, y, w, h, seed = 7, opts = {}) {
+export function makeBlob(x, y, w, h, seed = 1, o = {}) {
   const rng = makeRng(seed);
-  const rows = opts.rows ?? Math.max(3, Math.round(h / 150));
-  const rowH = h / rows;
-  const strokes = [];
-  for (let r = 0; r < rows; r++) {
-    const cy = y + rowH * (r + 0.5) + (rng() - 0.5) * rowH * 0.15;
-    const ltr = r % 2 === 0;
-    const xs = ltr ? [x - w * 0.05, x + w * 1.04] : [x + w * 1.05, x - w * 0.04];
-    const path = [];
-    const nPts = 5;
-    for (let i = 0; i < nPts; i++) {
-      const t = i / (nPts - 1);
-      path.push([lerp(xs[0], xs[1], t), cy + Math.sin(t * Math.PI * (1 + rng())) * rowH * 0.12 * (rng() - 0.5)]);
-    }
-    strokes.push(
-      makeStroke(path, {
-        width: rowH * (1.55 + rng() * 0.3),
-        seed: seed * 31 + r,
-        dry: opts.dry ?? 0.55,
-        color: opts.color,
-      }),
-    );
-  }
-  return strokes;
+  const rx = w / 2;
+  const ry = h / 2;
+  const rough = (o.rough ?? 0.03) * Math.min(rx, ry);
+  const N = 180;
+  const ph = [rng() * 6.28, rng() * 6.28, rng() * 6.28];
+  const rimAt = (a) => {
+    const c = Math.cos(a);
+    const s = Math.sin(a);
+    const sq = o.square ?? 4; // 4 = a rounded rectangle, higher = squarer corners
+    const k = (Math.abs(c) ** sq + Math.abs(s) ** sq) ** (-1 / sq);
+    const wob = (Math.sin(a * 5 + ph[0]) + Math.sin(a * 13 + ph[1]) * 0.7 + Math.sin(a * 37 + ph[2]) * 0.35 + Math.sin(a * 71 + ph[0]) * 0.18) * rough;
+    return [c * (rx * k + wob), s * (ry * k + wob)];
+  };
+  const rim = Array.from({ length: N }, (_, i) => rimAt((i / N) * Math.PI * 2));
+  const spikeLen = o.spikeLen ?? 20;
+  const nSpikes = o.spikes ?? 24;
+  const spikes = Array.from({ length: nSpikes }, (_, i) => {
+    const a = ((i + 0.5 + (rng() - 0.5) * 0.7) / nSpikes) * Math.PI * 2;
+    const base = rimAt(a);
+    const l = Math.hypot(base[0], base[1]) || 1;
+    return {
+      base,
+      dir: [base[0] / l, base[1] / l],
+      len: spikeLen * (0.3 + rng() ** 1.5 * 1.1),
+      w: spikeLen * (o.spikeWidth ?? 1) * (0.28 + rng() * 0.3),
+      bead: rng() < 0.3 ? 1 + rng() * 1.6 : 0,
+    };
+  });
+  const dropReach = o.dropReach ?? spikeLen * 1.6;
+  const nDrops = o.drops ?? 10;
+  const drops = Array.from({ length: nDrops }, (_, i) => {
+    const a = ((i + rng()) / nDrops) * Math.PI * 2;
+    const base = rimAt(a);
+    const l = Math.hypot(base[0], base[1]) || 1;
+    const d = spikeLen * 0.6 + rng() * dropReach;
+    const r = 1.2 + rng() * rng() * (o.dropSize ?? 5);
+    return { x: base[0] + (base[0] / l) * d, y: base[1] + (base[1] / l) * d, r, e: 1 + rng() * 0.8, a };
+  });
+  return { cx: x + rx, cy: y + ry, rim, spikes, drops, color: o.color ?? '#ece6d6' };
 }
 
-/** Draw a sequence of strokes with one overall progress value (each gets its slice). */
-export function drawSequence(ctx, strokes, progress, opts = {}) {
-  const n = strokes.length;
-  const overlap = opts.overlap ?? 0.35;
-  const slice = 1 / (n - (n - 1) * overlap);
-  strokes.forEach((s, i) => {
-    const start = i * slice * (1 - overlap);
-    const p = clamp((progress - start) / slice, 0, 1);
-    if (opts.reverse) {
-      // un-paint in reverse order: last stroke leaves first
-      const j = n - 1 - i;
-      const startR = j * slice * (1 - overlap);
-      const pr = 1 - clamp((1 - progress - startR) / slice, 0, 1);
-      drawStroke(ctx, s, pr, { ...opts, reverse: true });
-    } else {
-      drawStroke(ctx, s, p, opts);
+/** Draw a makeBlob splat. `progress` 0..1 grows it from its centre. */
+export function drawBlob(ctx, b, progress) {
+  if (progress <= 0) return;
+  const g = clamp(progress, 0, 1);
+  const body = 1 - (1 - clamp(g * 1.5, 0, 1)) ** 3;
+  const reach = clamp((g - 0.35) / 0.65, 0, 1);
+  ctx.save();
+  ctx.translate(b.cx, b.cy);
+  ctx.fillStyle = b.color;
+  ctx.scale(body, body);
+  ctx.beginPath();
+  b.rim.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+  ctx.closePath();
+  ctx.fill();
+  for (const s of b.spikes) {
+    const [bx, by] = s.base;
+    const [dx, dy] = s.dir;
+    const L = s.len * reach;
+    ctx.beginPath();
+    // start a little inside the rim so no seam shows
+    // concave sides pull it into a tapered tendril of ink
+    const tx = bx + dx * L;
+    const ty = by + dy * L;
+    const mx = bx + dx * L * 0.3;
+    const my = by + dy * L * 0.3;
+    const pinch = s.w * 0.14;
+    // the base sits well inside the rim: on a slanted stretch of rim a shallow one leaves a gap,
+    // and the spike floats as a loose triangle
+    const inset = 4 + s.w;
+    ctx.moveTo(bx - dx * inset - dy * s.w, by - dy * inset + dx * s.w);
+    ctx.quadraticCurveTo(mx - dy * pinch, my + dx * pinch, tx, ty);
+    ctx.quadraticCurveTo(mx + dy * pinch, my - dx * pinch, bx - dx * inset + dy * s.w, by - dy * inset - dx * s.w);
+    ctx.fill();
+    if (s.bead && reach > 0.8) {
+      ctx.beginPath();
+      ctx.arc(tx, ty, s.bead, 0, Math.PI * 2);
+      ctx.fill();
     }
-  });
+  }
+  if (reach > 0) {
+    for (const d of b.drops) {
+      ctx.beginPath();
+      ctx.ellipse(d.x, d.y, d.r * d.e * reach, d.r * reach, d.a, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
 }
 
 /** A brush "enso" circle. */

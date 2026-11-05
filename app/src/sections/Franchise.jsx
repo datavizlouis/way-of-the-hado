@@ -25,6 +25,16 @@ function useWidth(ref) {
   return w;
 }
 
+function useViewportH() {
+  const [h, setH] = useState(window.innerHeight);
+  useEffect(() => {
+    const on = () => setH(window.innerHeight);
+    window.addEventListener('resize', on);
+    return () => window.removeEventListener('resize', on);
+  }, []);
+  return h;
+}
+
 function niceMax(v) {
   const p = Math.pow(10, Math.floor(Math.log10(v)));
   const m = v / p;
@@ -44,7 +54,7 @@ function Tooltip({ tip }) {
 
 // ---------------------------------------------------------------- cumulative lines
 
-function SeriesLines({ rows, width }) {
+function SeriesLines({ rows, width, height: H }) {
   const [tip, setTip] = useState(null);
   const series = useMemo(() => {
     const m = new Map();
@@ -60,7 +70,6 @@ function SeriesLines({ rows, width }) {
       .filter((s) => s.pts.length > 1 && s.pts.every((p, i) => !i || p.v >= s.pts[i - 1].v));
   }, [rows]);
   if (!series.length) return null;
-  const H = 380;
   const M = { t: 20, r: 150, b: 34, l: 44 };
   const iw = width - M.l - M.r;
   const ih = H - M.t - M.b;
@@ -146,9 +155,9 @@ function SeriesLines({ rows, width }) {
 
 // ---------------------------------------------------------------- ranked bars
 
-function Bars({ items, width, fmt, label }) {
+function Bars({ items, width, fmt, label, maxH }) {
   const [tip, setTip] = useState(null);
-  const rowH = 30;
+  const rowH = Math.min(30, (maxH - 12) / items.length);
   const M = { t: 6, r: 70, b: 6, l: Math.min(270, width * 0.42) };
   const H = M.t + M.b + items.length * rowH;
   const iw = width - M.l - M.r;
@@ -184,13 +193,12 @@ function Bars({ items, width, fmt, label }) {
 
 // ---------------------------------------------------------------- SF6 step chart
 
-function Milestones({ rows, width }) {
+function Milestones({ rows, width, height: H }) {
   const pts = rows
     .filter((r) => r.Title === 'Street Fighter 6' && r.Category === 'Title units')
     .map((r) => ({ d: parseAsOf(r['As Of']), v: num(r.Value), r }))
     .sort((a, b) => a.d - b.d);
   if (pts.length < 2) return null;
-  const H = 200;
   const M = { t: 16, r: 50, b: 28, l: 40 };
   const iw = width - M.l - M.r;
   const ih = H - M.t - M.b;
@@ -237,9 +245,11 @@ function Milestones({ rows, width }) {
 
 // ---------------------------------------------------------------- section
 
-export default function Franchise({ rows, loadedAt }) {
+export default function Franchise({ rows, loadedAt, children }) {
   const ref = useRef(null);
   const width = useWidth(ref);
+  const vh = useViewportH();
+  const chartH = Math.max(200, vh - 210); // what's left under a panel's heading and padding
   const colW = width > 980 ? (width - 48) / 2 : width;
 
   const latest = (filter) => {
@@ -301,14 +311,16 @@ export default function Franchise({ rows, loadedAt }) {
 
   if (!rows.length) {
     return (
-      <section className="franchise" ref={ref}>
+      <section className="franchise screen" ref={ref}>
         <p className="error">No rows came back from the “Franchise Metrics” datasource.</p>
+        {children}
       </section>
     );
   }
 
   return (
-    <section className="franchise" ref={ref} aria-label="The franchise in numbers">
+    <>
+    <section className="franchise screen" ref={ref} aria-label="The franchise in numbers">
       <header className="section-head static">
         <p className="eyebrow">The franchise in numbers</p>
         <h2 className="brush-title">
@@ -356,20 +368,25 @@ export default function Franchise({ rows, loadedAt }) {
         )}
       </div>
 
+    </section>
+
+    <section className="franchise screen" aria-label="Lifetime units by franchise">
       <div className="panel wide">
         <h3>Street Fighter climbs steadily but trails Mortal Kombat, Smash and Tekken in lifetime units</h3>
         <p className="sub">
           Cumulative franchise units sold, millions, by reporting date. Hover a point for its source. Series with conflicting totals
           (e.g. Soulcalibur) are omitted.
         </p>
-        <SeriesLines rows={rows} width={width} />
+        <SeriesLines rows={rows} width={width} height={chartH} />
       </div>
+    </section>
 
+    <section className="franchise screen" aria-label="Best sellers and box office">
       <div className="grid2">
         <div className="panel">
           <h3>Smash Ultimate outsells every other fighting game; Street Fighter V and 6 lead Capcom's modern era</h3>
           <p className="sub">Lifetime units of individual titles, latest figure, millions</p>
-          <Bars items={titles} width={colW} fmt={fmtUnits} label="Best-selling individual fighting games" />
+          <Bars items={titles} width={colW} fmt={fmtUnits} label="Best-selling individual fighting games" maxH={chartH - 40} />
         </div>
         <div className="panel">
           <h3>
@@ -377,15 +394,17 @@ export default function Franchise({ rows, loadedAt }) {
             {films.find((f) => f.franchise === SF)?.label || 'its 1994 film'}
           </h3>
           <p className="sub">Worldwide box office, millions of USD, not adjusted for inflation</p>
-          <Bars items={films} width={colW} fmt={fmtUsd} label="Fighting-game film box office" />
+          <Bars items={films} width={colW} fmt={fmtUsd} label="Fighting-game film box office" maxH={chartH - 40} />
         </div>
       </div>
+    </section>
 
+    <section className="franchise screen" aria-label="Street Fighter 6 and the arcade">
       <div className="grid2">
         <div className="panel">
           <h3>Street Fighter 6 passed {sf6 ? fmtUnits(sf6.v) : 'its latest milestone'} in about three years</h3>
           <p className="sub">Cumulative units at each announced milestone</p>
-          <Milestones rows={rows} width={colW} />
+          <Milestones rows={rows} width={colW} height={Math.min(chartH, 440)} />
         </div>
         <div className="panel callout">
           <h3>Why the arcade number matters</h3>
@@ -396,7 +415,9 @@ export default function Franchise({ rows, loadedAt }) {
           </p>
         </div>
       </div>
+    </section>
 
+    <section className="franchise screen sources-screen" aria-label="Sources and credits">
       <footer className="sources">
         <p>
           <strong>Sources & caveats.</strong> Queried live from the “Franchise Metrics” datasource
@@ -406,13 +427,15 @@ export default function Franchise({ rows, loadedAt }) {
         </p>
         <ul>
           {sources.map(([s, url]) => (
-            <li key={s}>
+            <li key={s} title={url ? `${s} — ${url}` : s}>
               {s}
               {url ? <span className="url"> — {url}</span> : null}
             </li>
           ))}
         </ul>
       </footer>
+      {children}
     </section>
+    </>
   );
 }

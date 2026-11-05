@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { drawSequence, makeSplat, drawSplat as drawInkSplat } from '../lib/brush.js';
+import { makeBlob, drawBlob } from '../lib/brush.js';
 import { STORY_ART } from '../lib/storyCast.js';
 import { drawScene } from '../lib/beatScenes.js';
 import { makeRng, clamp, easeInOut, easeOut } from '../lib/rng.js';
 import { assetUrl, loadImage } from '../assets.js';
 import { useInView } from '../lib/useInView.js';
+import { preloadSfx } from '../lib/player.js';
 import { renderLogo, logoSplats, drawSplat } from '../lib/logo.js';
 import { makeAura, drawAura } from '../lib/aura.js';
 
@@ -13,6 +14,7 @@ const PAPER = '#ece6d6';
 const INK = '#141a2b';
 const UNPAINT_MS = 520;
 const PAINT_MS = 950;
+const FOOT = 110; // px kept clear at the bottom for "Scroll for more" and the carousel
 
 export const BRUSH_FONT = '"HadoBrush", "Kaushan Script", "Brush Script MT", "Segoe Script", cursive';
 export const DISPLAY_FONT = '"HadoDisplay", "Impact", "Haettenschweiler", "Arial Narrow Bold", sans-serif';
@@ -36,45 +38,32 @@ function wrap(ctx, text, maxW) {
 function buildLayout(step, chapters, W, H) {
   const narrow = W < 760;
   if (step === 0) {
-    const cx = W / 2;
-    const cy = H * 0.47;
     // no paper strokes on the title: the logo brings its own ink splat
-    const strokes = [];
-    return { kind: 'title', strokes, cx, cy };
+    return { kind: 'title', strokes: [], cx: W / 2, U: H - FOOT };
   }
   const ch = chapters[step - 1];
   // the beat's box: art on one side, text on the other, swapping sides every beat
-  // on a phone, keep clear of the chapter dots down the right edge
-  const bw = narrow ? W - 84 : Math.min(W * 0.7, 1060);
-  const bh = narrow ? Math.min(H * 0.72, 760) : Math.min(H * 0.5, 520);
-  const bx = narrow ? 16 : (W - bw) / 2;
-  const by = H * 0.48 - bh / 2;
+  const bw = narrow ? W * 0.9 : Math.min(W * 0.76, 1160);
+  const U = H - FOOT;
+  const bh = Math.min(U * 0.74, 600);
+  const bx = (W - bw) / 2;
+  const by = U / 2 - bh / 2;
   const artLeft = step % 2 === 1;
-  const artW = narrow ? bw : bw * 0.4;
-  const gap = narrow ? 0 : bw * 0.06;
+  const artW = narrow ? bw : bw * (STORY_ART[step]?.artShare ?? 0.4);
+  const gap = narrow ? 0 : bw * (STORY_ART[step]?.artGap ?? 0.06);
   const art = narrow
     ? { x: bx, y: by, w: bw, h: bh * 0.42 }
     : { x: artLeft ? bx : bx + bw - artW, y: by, w: artW, h: bh };
   const text = narrow
     ? { x: bx, y: by + bh * 0.46, w: bw, h: bh * 0.54 }
     : { x: artLeft ? bx + artW + gap : bx, y: by, w: bw - artW - gap, h: bh };
-  // white splatter, wider and taller than the box: a row of overlapping blots plus a big one
-  // in the middle so the box is covered edge to edge
-  const rng = makeRng(500 + step * 17);
-  const splats = [];
-  const n = narrow ? 3 : 4;
-  for (let i = 0; i < n; i++) {
-    const u = n === 1 ? 0.5 : i / (n - 1);
-    splats.push(
-      makeSplat(bx + bw * (0.12 + u * 0.76), by + bh * (0.5 + (rng() - 0.5) * 0.16), bh * (0.44 + rng() * 0.06), 900 + step * 31 + i, {
-        color: PAPER, sx: 1.2 + rng() * 0.15, sy: 1.15 + rng() * 0.1, rot: (rng() - 0.5) * 0.8, spikeLen: 0.35, spread: 0.4, beads: 0.4,
-      }),
-    );
-  }
-  splats.splice(1, 0, makeSplat(bx + bw / 2, by + bh / 2, bh * 0.6, 77 + step, {
-    color: PAPER, sx: (bw / bh) * 0.72, sy: 1.05, rot: (rng() - 0.5) * 0.1, spikeLen: 0.35, spread: 0.4, beads: 0.4,
-  }));
-  return { kind: 'chapter', strokes: [], splats, art, text, artLeft, narrow, ch, step };
+  // one big white splat, wider and taller than the box, with spikes but few loose drops
+  const padX = Math.min(W * 0.06, 90);
+  const padY = U * 0.06;
+  const blob = makeBlob(bx - padX, by - padY, bw + padX * 2, bh + padY * 2, 900 + step * 31, {
+    color: PAPER, spikes: 26, spikeLen: Math.min(U * 0.045, 46), rough: 0.05, drops: 12, dropSize: 5,
+  });
+  return { kind: 'chapter', strokes: [], blob, art, text, artLeft, narrow, ch, step };
 }
 
 function drawContent(ctx, L, W, H, a, slide) {
@@ -123,8 +112,9 @@ const logoCache = { key: '', logo: null, splats: null, aura: null };
 export function resetLogoCache() {
   logoCache.key = '';
 }
-function builtLogo(W, H, dpr) {
-  const w = Math.round(Math.min(W * 0.74, H * 1.1, 1000));
+function builtLogo(W, U, dpr) {
+  // the logo is 0.66 of its width tall, in the space above the carousel
+  const w = Math.round(Math.min(W * 0.74, (U - 76) / 0.66, 1000));
   const key = `${w}@${dpr}`;
   if (logoCache.key !== key) {
     logoCache.key = key;
@@ -140,9 +130,10 @@ function drawTitleLogo(ctx, L, W, H, logoImg, a, dpr, reverse, now) {
   if (a <= 0) return;
   if (!logoImg) {
     // the ink splat lands first, the lettering slams in over it, then the red energy ignites
-    const { logo, splats, aura } = builtLogo(W, H, dpr);
+    const { logo, splats, aura } = builtLogo(W, L.U, dpr);
+    const cy = L.U / 2;
     const x0 = L.cx - logo.w / 2;
-    const y0 = L.cy - logo.h / 2;
+    const y0 = cy - logo.h / 2;
     ctx.save();
     ctx.translate(x0, y0);
     const sp = reverse ? a : clamp(a * 1.6, 0, 1);
@@ -153,7 +144,7 @@ function drawTitleLogo(ctx, L, W, H, logoImg, a, dpr, reverse, now) {
       const s = 1.18 - 0.18 * easeOut(la);
       ctx.save();
       ctx.globalAlpha = clamp(la * 1.5, 0, 1);
-      ctx.translate(L.cx, L.cy);
+      ctx.translate(L.cx, cy);
       ctx.scale(s, s);
       const auraA = reverse ? la : clamp((la - 0.5) / 0.5, 0, 1);
       ctx.translate(-logo.w / 2, -logo.h / 2);
@@ -162,21 +153,12 @@ function drawTitleLogo(ctx, L, W, H, logoImg, a, dpr, reverse, now) {
       drawAura(ctx, aura, now, auraA, 'front');
       ctx.restore();
     }
-    ctx.save();
-    ctx.globalAlpha = clamp(la, 0, 1) * 0.85;
-    ctx.fillStyle = PAPER;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.font = `italic ${clamp(W * 0.014, 14, 19)}px ${BODY_FONT}`;
-    ctx.fillText('A visual history of Street Fighter  ·  1987 – today', L.cx, Math.min(H - 90, L.cy + Math.max(logo.h / 2, H * 0.24) + 44));
-    ctx.restore();
     return;
   }
   ctx.save();
   ctx.globalAlpha = clamp(a, 0, 1);
   const s = 0.85 + 0.15 * easeOut(clamp(a, 0, 1));
-  const cy = L.cy + H * 0.035;
-  ctx.translate(L.cx, cy);
+  ctx.translate(L.cx, (L.U - 44) / 2);
   ctx.scale(s, s);
   if (logoImg) {
     const h = Math.min(H * 0.24, W * 0.16);
@@ -274,7 +256,7 @@ function drawSky(ctx, W, H, t, stars, flash) {
 
 // ------------------------------------------------------------------ component
 
-export default function Intro({ chapters, characters = [], height }) {
+export default function Intro({ chapters }) {
   const wrapRef = useRef(null);
   const skyRef = useRef(null);
   const paintRef = useRef(null);
@@ -286,6 +268,7 @@ export default function Intro({ chapters, characters = [], height }) {
 
   // assets
   useEffect(() => {
+    preloadSfx(['coin', 'akuma', 'shoryuken', 'psycho_crusher']);
     loadImage(assetUrl('img/hado-logo.png') || assetUrl('img/hado-logo.webp')).then((img) => {
       imgs.current.logo = img;
     });
@@ -325,10 +308,13 @@ export default function Intro({ chapters, characters = [], height }) {
       const s = anim.current;
       const dir = Math.sign(e.deltaY);
       if (!dir) return;
+      // mid-snap to or from this screen, let the page finish scrolling
+      if (Math.abs(el.getBoundingClientRect().top) > 4) return;
       const atEnd = (dir > 0 && s.target >= total - 1) || (dir < 0 && s.target <= 0);
-      if (atEnd) return;
-      e.preventDefault();
       const now = performance.now();
+      // the last beat holds until the wheel has settled, so one flick can't also leave the screen
+      if (atEnd && now >= lock) return;
+      e.preventDefault();
       if (now < lock || Math.abs(e.deltaY) < 4) return;
       lock = now + 700;
       go(s.target + dir);
@@ -441,9 +427,8 @@ export default function Intro({ chapters, characters = [], height }) {
       if (L.kind === 'title') {
         drawTitleLogo(pctx, L, W, H, imgs.current.logo, reverse ? p : (p - 0.35) / 0.65, dpr, reverse, now);
       } else {
-        // white splatter lands first (staggered), then the art and text slide in on top
-        const sp = reverse ? p : clamp(p * 1.5, 0, 1);
-        L.splats.forEach((sp1, i) => drawInkSplat(pctx, sp1, clamp(sp * 1.25 - i * 0.06, 0, 1)));
+        // white splatter lands first, then the art and text slide in on top
+        drawBlob(pctx, L.blob, reverse ? p : clamp(p * 1.5, 0, 1));
         const ca = reverse ? clamp(p * 1.6 - 0.3, 0, 1) : clamp((p - 0.4) / 0.6, 0, 1);
         const slide = (1 - easeOut(ca)) * 40;
         const sceneT = (now - s.paintedAt) / 1000 - 0.5;
@@ -461,9 +446,8 @@ export default function Intro({ chapters, characters = [], height }) {
   const ch = step > 0 ? chapters[step - 1] : null;
   return (
     <section
-      className="intro"
+      className="intro screen"
       ref={wrapRef}
-      style={{ height }}
       tabIndex={0}
       aria-roledescription="story"
       aria-label="Way of the Hado — story. Use arrow keys or scroll to move between chapters."
@@ -473,22 +457,21 @@ export default function Intro({ chapters, characters = [], height }) {
       <div className="sr-only" aria-live="polite">
         {ch ? `Chapter ${ch.Chapter}, ${ch.Era}: ${ch.Title}. ${ch.Body}` : 'Way of the Hado. A visual history of Street Fighter.'}
       </div>
-      <nav className="story-dots" aria-label="Story chapters">
-        {Array.from({ length: total }, (_, i) => (
-          <button
-            key={i}
-            className={i === step ? 'on' : ''}
-            onClick={() => go(i)}
-            aria-label={i === 0 ? 'Title' : `Chapter ${i}: ${chapters[i - 1]?.Title}`}
-            aria-current={i === step ? 'step' : undefined}
-          >
-            <span>{i === 0 ? '◆' : i}</span>
-          </button>
-        ))}
-      </nav>
-      <div className={`scroll-hint ${step === total - 1 ? 'end' : ''}`} aria-hidden="true">
-        {step === total - 1 ? 'Keep scrolling — meet the fighters' : 'Scroll to paint the next chapter'}
-        <span className="chev">▼</span>
+      <div className="story-foot">
+        <p className="scroll-hint" aria-hidden="true">Scroll for more</p>
+        <nav className="story-orbs" aria-label="Story chapters">
+          {Array.from({ length: total }, (_, i) => (
+            <button
+              key={i}
+              className={i === step ? 'on' : ''}
+              onClick={() => go(i)}
+              aria-label={i === 0 ? 'Title' : `Chapter ${i}: ${chapters[i - 1]?.Title}`}
+              aria-current={i === step ? 'step' : undefined}
+            >
+              {i === step ? <span className="hadoken" style={{ backgroundImage: `url(${assetUrl('img/hadoken.png')})` }} /> : <span className="orb" />}
+            </button>
+          ))}
+        </nav>
       </div>
     </section>
   );

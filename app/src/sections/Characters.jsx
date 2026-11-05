@@ -3,7 +3,8 @@ import { FieldScene } from '../lib/fieldScene.js';
 import { Fighter, parseMoves } from '../lib/fighter.js';
 import { strokeImage } from '../lib/brush.js';
 import { useInView } from '../lib/useInView.js';
-import BrushPanel from './BrushPanel.jsx';
+import SplatPanel from './SplatPanel.jsx';
+import { renderFireText } from '../lib/logo.js';
 
 function webglAvailable() {
   try {
@@ -47,7 +48,31 @@ function FallbackRow({ characters, onSelect, onHover, selected, fighterRef }) {
   return <div ref={rowRef} className={`fallback-row ${selected ? 'has-selection' : ''}`} data-selected={selected || ''} />;
 }
 
-export default function Characters({ characters, height }) {
+// A phrase in the same fire lettering as HADO in the intro, redrawn once the brush font is in.
+function FireTitle({ text, width }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    let live = true;
+    const draw = () => {
+      if (!live) return;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const { canvas, w, h } = renderFireText(text, width, dpr);
+      const c = ref.current;
+      c.width = canvas.width;
+      c.height = canvas.height;
+      c.style.width = `${w}px`;
+      c.style.height = `${h}px`;
+      c.getContext('2d').drawImage(canvas, 0, 0);
+    };
+    document.fonts.load('40px "HadoBrush"').then(draw);
+    return () => {
+      live = false;
+    };
+  }, [text, width]);
+  return <canvas ref={ref} className="fire-title" aria-hidden="true" />;
+}
+
+export default function Characters({ characters }) {
   const stageRef = useRef(null);
   const sectionRef = useRef(null);
   const sceneRef = useRef(null);
@@ -61,6 +86,7 @@ export default function Characters({ characters, height }) {
 
   const redStroke = useMemo(() => strokeImage(360, 110, '#c4283c', 9), []);
   const redStrokeHover = useMemo(() => strokeImage(360, 110, '#e23a4e', 21), []);
+  const blackStroke = useMemo(() => strokeImage(360, 110, '#0b0d14', 33), []);
 
   useEffect(() => {
     if (!gl) return undefined;
@@ -68,6 +94,10 @@ export default function Characters({ characters, height }) {
     try {
       scene = new FieldScene(stageRef.current, characters, {
         onHover: setHovered,
+        projectileLimit: () => {
+          const panel = sectionRef.current?.querySelector('.bio-panel');
+          return panel ? panel.getBoundingClientRect().left - sectionRef.current.getBoundingClientRect().left : null;
+        },
         onSelect: (id) => {
           setSelected(id);
           setActiveMove(null);
@@ -111,7 +141,7 @@ export default function Characters({ characters, height }) {
   };
 
   return (
-    <section className="characters" ref={sectionRef} style={{ height }} aria-label="The fighters">
+    <section className="characters screen" ref={sectionRef} aria-label="The fighters">
       <div className="field-stage" ref={stageRef}>
         {(!gl || error) && (
           <FallbackRow
@@ -125,9 +155,11 @@ export default function Characters({ characters, height }) {
       </div>
 
       <header className={`section-head ${selected ? 'dim' : ''}`}>
-        <p className="eyebrow">Super Street Fighter II · 16 World Warriors</p>
-        <h2 className="brush-title">The Fighters</h2>
-        <p className="lede">Lightning lights the field — hover a fighter to bring them out of the dark, click to step in close.</p>
+        <h2 className="meet-title">
+          <span className="meet-the">Meet the</span>
+          <FireTitle text="Street Fighters" width={560} />
+          <span className="sr-only">Street Fighters</span>
+        </h2>
       </header>
 
       <div className={`hover-tag ${hov && !selected ? 'show' : ''}`} aria-live="polite">
@@ -150,10 +182,10 @@ export default function Characters({ characters, height }) {
         ))}
       </nav>
 
-      <BrushPanel open={!!sel} seed={sel ? sel.Name.length * 7 : 3} className="bio-panel">
+      <SplatPanel open={!!sel} seed={sel ? sel.Name.length * 7 : 3} className="bio-panel">
         {sel && (
           <div className="bio" key={sel.Id}>
-            <button className="back" onClick={back}>
+            <button className="back" style={{ '--stroke': `url(${blackStroke})` }} onClick={back}>
               ← All fighters
             </button>
             <p className="eyebrow ink">
@@ -187,7 +219,7 @@ export default function Characters({ characters, height }) {
             </div>
           </div>
         )}
-      </BrushPanel>
+      </SplatPanel>
       {error && <p className="error small">3D field unavailable ({error}) — showing the 2D roster instead.</p>}
     </section>
   );

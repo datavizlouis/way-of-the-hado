@@ -5,10 +5,20 @@
 import * as THREE from 'three';
 import { Fighter, SPRITE_SIZE } from './fighter.js';
 import { makeRng, clamp, lerp, easeInOut } from './rng.js';
+import { PROJECTILES } from './moveTimeline.js';
 
 const PIX = 3;
-const SPACING = 2.45;
-const SPRITE_W = 2.7;
+const SPACING = 2.85; // between neighbours in one row: wide enough that no two fighters touch
+const SPRITE_W = 2.7 * 2; // fighters stand at twice their old world size
+const FRONT_Z = 0;
+const BACK_Z = -10; // far enough back that the top row stands clear above the bottom row
+const CENTRE_X = -0.5; // sprites stand left of their canvas centre: keeps the rows centred on screen
+const BACK_SPREAD = 1.42; // perspective narrows the far row: spread it so the zig-zag lines up on screen
+const DETAIL_D = 14.8;
+
+const PROJECTILE_SPEED = 0.005; // world units per ms
+const PROJECTILE_MS = 3200; // a backstop: it normally fades out at the bio panel first
+const PROJECTILE_FADE_PX = 110; // it fades over this distance before reaching the panel's edge
 
 function canvasTex(w, h, draw, opts = {}) {
   const c = document.createElement('canvas');
@@ -109,22 +119,6 @@ function grassTexture() {
   });
 }
 
-function orbTexture(color) {
-  return canvasTex(32, 32, (ctx, w, h) => {
-    const cx = w / 2;
-    const cy = h / 2;
-    for (let y = 0; y < h; y += 2) {
-      for (let x = 0; x < w; x += 2) {
-        const d = Math.hypot(x - cx, y - cy) / (w / 2);
-        if (d > 1) continue;
-        ctx.fillStyle = d < 0.35 ? '#ffffff' : d < 0.6 ? '#cfe8ff' : color;
-        ctx.globalAlpha = d < 0.6 ? 1 : 0.85 - d * 0.4;
-        ctx.fillRect(x, y, 2, 2);
-      }
-    }
-  });
-}
-
 function shadowTexture() {
   return canvasTex(32, 16, (ctx, w, h) => {
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
@@ -191,6 +185,16 @@ function ribbon(paths, width, camDir) {
   return g;
 }
 
+// is the fighter's canvas painted at this texture coordinate? (checks a small area, so
+// thin limbs stay easy to hit)
+function solidAt(f, uv) {
+  const px = Math.floor(uv.x * f.size);
+  const py = Math.floor((1 - uv.y) * f.size);
+  const a = f.ctx.getImageData(clamp(px - 2, 0, f.size - 5), clamp(py - 2, 0, f.size - 5), 5, 5).data;
+  for (let i = 3; i < a.length; i += 4) if (a[i] > 128) return true;
+  return false;
+}
+
 export class FieldScene {
   constructor(container, characters, cb = {}) {
     this.container = container;
@@ -240,7 +244,7 @@ export class FieldScene {
     scene.add(ridge);
 
     // rubble
-    this.foreground = [];
+    this.rubble = [];
     const rubbleMat = new THREE.MeshLambertMaterial({ color: 0x5b5649, flatShading: true });
     const rng = this.rng;
     for (let i = 0; i < 70; i++) {
@@ -253,7 +257,7 @@ export class FieldScene {
       m.position.set(x, s * 0.4, z);
       m.rotation.set(rng() * 3, rng() * 3, rng() * 3);
       m.scale.y = 0.6 + rng() * 0.5;
-      if (z > -1.5) this.foreground.push(m);
+      this.rubble.push(m);
       scene.add(m);
     }
 
@@ -287,10 +291,11 @@ export class FieldScene {
     this.shadowTex = shadowTexture();
     this.fighters = characters.map((c, i) => {
       const perRow = Math.ceil(characters.length / 2);
-      const row = i % 2; // alternate rows so neighbours in the roster stand side by side
+      const row = i % 2; // zig-zag: each fighter stands in the gap between two in the other row
       const col = Math.floor(i / 2);
-      const x = (col - (perRow - 1) / 2) * SPACING + (row ? SPACING / 2 : 0) - SPACING / 4;
-      const z = row ? -1.9 : 0;
+      const across = (col - (perRow - 1) / 2) * SPACING + (row ? SPACING / 2 : 0) - SPACING / 4;
+      const x = row ? across * BACK_SPREAD : across;
+      const z = row ? BACK_Z : FRONT_Z;
       const f = new Fighter(c, { onEvent: (ev, fi) => this.onFighterEvent(ev, fi) });
       const tex = new THREE.CanvasTexture(f.canvas);
       tex.magFilter = THREE.NearestFilter;
@@ -301,17 +306,20 @@ export class FieldScene {
       // sheet sprites are drawn at native scale in a bigger canvas: grow the plane to match
       const planeW = f.size === SPRITE_SIZE ? SPRITE_W : SPRITE_W * (f.size / SPRITE_SIZE) * 0.92;
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(planeW, planeW), mat);
-      mesh.position.set(x, planeW / 2 - (f.size === SPRITE_SIZE ? 0.08 : planeW * 0.012), z);
+      // sheet sprites stand on a centre line at 40% of their canvas: put that line at x
+      const standX = f.size === SPRITE_SIZE ? x : x + planeW * 0.1;
+      mesh.position.set(standX, planeW / 2 - (f.size === SPRITE_SIZE ? 0.16 : planeW * 0.012), z);
       mesh.userData.id = c.Id;
+      mesh.userData.fighter = f;
       scene.add(mesh);
       const sh = new THREE.Mesh(
-        new THREE.PlaneGeometry(1.3, 0.45),
+        new THREE.PlaneGeometry(2.6, 0.9),
         new THREE.MeshBasicMaterial({ map: this.shadowTex, transparent: true, depthWrite: false }),
       );
       sh.rotation.x = -Math.PI / 2;
-      sh.position.set(x - 0.25, 0.02, z);
+      sh.position.set(x, 0.02, z);
       scene.add(sh);
-      return { c, f, tex, mat, mesh, sh, home: new THREE.Vector3(x, mesh.position.y, z), tint: 0, fade: 1, phase: rng() * 600 };
+      return { c, f, tex, mat, mesh, sh, planeW, standX: x, home: new THREE.Vector3(standX, mesh.position.y, z), tint: 0, fade: 1, phase: rng() * 600, ox: 0, oy: 0 };
     });
     // de-sync idles
     this.fighters.forEach((F) => F.f.update(F.phase));
@@ -340,6 +348,7 @@ export class FieldScene {
     this.last = performance.now();
     this.loop = this.loop.bind(this);
     this.raf = requestAnimationFrame(this.loop);
+    if (process.env.NODE_ENV !== 'production') window.__hadoField = this; // for the test scripts
   }
 
   resize() {
@@ -358,24 +367,25 @@ export class FieldScene {
 
   overviewPose(pos, look) {
     const n = Math.ceil((this.fighters?.length || 16) / 2);
-    const halfWidth = ((n - 1) / 2) * SPACING + SPRITE_W * 0.7;
+    const halfWidth = ((n - 1) / 2) * SPACING + 0.1;
     const vfov = (this.camera.fov * Math.PI) / 180;
-    const hfov = 2 * Math.atan(Math.tan(vfov / 2) * this.camera.aspect);
-    const d = clamp(halfWidth / Math.tan(hfov / 2), 8, 40);
-    pos.set(0, 2.1 + d * 0.05, d + 0.5);
-    look.set(0, 2.0, -1);
+    // fit the rows' width, but on a wider screen than 16:9 don't come so close that they outgrow its height
+    const aspect = Math.min(this.camera.aspect, 16 / 9);
+    const d = clamp(halfWidth / (Math.tan(vfov / 2) * aspect), 8, 40);
+    pos.set(CENTRE_X, d * 0.68, d);
+    look.set(CENTRE_X, 2.4, BACK_Z / 2);
   }
 
   detailPose(id, pos, look) {
     const F = this.fighters.find((x) => x.c.Id === id);
     if (!F) return this.overviewPose(pos, look);
-    const d = 7.4;
+    const d = DETAIL_D;
     const vfov = (this.camera.fov * Math.PI) / 180;
     const halfW = Math.tan(vfov / 2) * d * this.camera.aspect;
-    // fighter sits around the left quarter of the frame
-    const off = this.camera.aspect > 1.2 ? halfW * 0.52 : 0;
-    pos.set(F.home.x + off, 2.1, F.home.z + d);
-    look.set(F.home.x + off, 1.45, F.home.z);
+    // fighter sits towards the left of the frame, leaving room to travel before the bio panel
+    const off = this.camera.aspect > 1.2 ? halfW * 0.66 : 0;
+    pos.set(F.standX + off, 4.2, F.home.z + d);
+    look.set(F.standX + off, 2.9, F.home.z);
   }
 
   tweenCamera(toPos, toLook) {
@@ -417,18 +427,48 @@ export class FieldScene {
   onFighterEvent(ev, fighter) {
     if (ev !== 'projectile') return;
     const F = this.fighters.find((x) => x.f === fighter);
-    if (!F) return;
-    const accent = fighter.pal.accent;
-    const mat = new THREE.MeshBasicMaterial({
-      map: orbTexture(accent), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
-    });
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.9), mat);
-    m.position.set(F.mesh.position.x + 0.95, F.mesh.position.y + 0.2, F.mesh.position.z + 0.05);
+    if (!F || !F.f.sheet) return; // the placeholder figures have no projectile art
+    // the fighter's own projectile art, at the same pixel scale, flying from the hands to the
+    // right (it passes behind the bio panel, which sits over the canvas)
+    const anim = F.f.sheet.anims.projectile;
+    const spec = PROJECTILES[F.c.Id];
+    if (!anim || !spec) throw new Error(`${F.c.Id} fires a projectile but has no projectile art`);
+    const px = F.planeW / F.f.size; // world units per sprite pixel
+    const [, , fw, , fax] = F.f.sheetFrame;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(...anim.frames.map((f) => f[2]));
+    canvas.height = Math.max(...anim.frames.map((f) => f[3]));
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
+    tex.generateMipmaps = false;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, fog: false });
+    const w = canvas.width * px;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, canvas.height * px), mat);
+    m.position.set(F.standX + (fw - fax) * px + w / 2, spec.y * px, F.home.z + 0.1);
     this.scene.add(m);
-    const light = new THREE.PointLight(new THREE.Color(accent), 3, 6, 1.5);
+    const light = new THREE.PointLight(spec.light, 6, 8, 1.5);
     light.position.copy(m.position);
     this.scene.add(light);
-    this.projectiles.push({ m, light, life: 0 });
+    this.projectiles.push({ m, tex, canvas, anim, img: F.f.sheetImg, light, life: 0, drawn: -1 });
+  }
+
+  /** Paint a projectile's current frame: launch frames once, then the flight frames on a loop. */
+  drawProjectile(p) {
+    const { anim, canvas } = p;
+    const launch = anim.launch || 0;
+    const step = Math.floor((p.life / 1000) * anim.fps);
+    const i = step < launch ? step : launch + ((step - launch) % (anim.frames.length - launch));
+    if (i === p.drawn) return;
+    p.drawn = i;
+    const [sx, sy, sw, sh] = anim.frames[i];
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // leading edge forward, centred on the flight line
+    ctx.drawImage(p.img, sx, sy, sw, sh, canvas.width - sw, Math.round((canvas.height - sh) / 2), sw, sh);
+    p.tex.needsUpdate = true;
   }
 
   spawnBolt() {
@@ -480,7 +520,10 @@ export class FieldScene {
     if (this.mode === 'overview' && this.camT >= 1) {
       this.raycaster.setFromCamera(this.pointer, this.camera);
       const hits = this.raycaster.intersectObjects(this.fighters.map((F) => F.mesh));
-      const id = hits.length ? hits[0].object.userData.id : null;
+      // a sprite's square has see-through corners: only its painted pixels count, otherwise
+      // the front row's empty space blocks the fighters standing behind it
+      const hit = hits.find((h) => solidAt(h.object.userData.fighter, h.uv));
+      const id = hit ? hit.object.userData.id : null;
       if (id !== this.hovered) {
         this.hovered = id;
         this.renderer.domElement.style.cursor = id ? 'pointer' : 'default';
@@ -501,30 +544,55 @@ export class FieldScene {
       F.mat.opacity = F.fade;
       F.mesh.visible = F.fade > 0.02;
       F.sh.visible = F.mesh.visible;
-      const lift = F.tint * 0.12 * (this.mode === 'overview' ? 1 : 0);
-      F.mesh.position.y = F.home.y + lift;
+      const lift = F.tint * 0.24 * (this.mode === 'overview' ? 1 : 0);
+      const tl = F.f.timeline;
+      const px = F.planeW / F.f.size;
+      const [dx, dy, a = 1] = tl.path ? tl.path(F.f.position) : [0, 0];
+      if (F.f.moveName) {
+        F.ox = dx * px;
+        F.oy = dy * px;
+      } else {
+        // the move is over: glide back to the fighter's spot
+        F.ox = lerp(F.ox, 0, Math.min(1, dt / 170));
+        F.oy = lerp(F.oy, 0, Math.min(1, dt / 170));
+      }
+      F.mesh.position.x = F.home.x + F.ox;
+      F.mesh.position.y = F.home.y + lift + F.oy;
+      F.mat.opacity = F.fade * a;
+      F.sh.position.x = F.standX + F.ox;
+      F.sh.scale.setScalar(clamp(1 - F.oy * 0.12, 0.45, 1));
       // only animate fighters the viewer can see in colour (cheap) + slow idle for the rest
       if (lit || F.f.moveName) {
-        if (F.f.update(dt)) F.tex.needsUpdate = true;
+        if (F.f.update(dt * (tl.rate ?? 1))) F.tex.needsUpdate = true;
       } else if (F.f.update(dt * 0.5)) F.tex.needsUpdate = true;
     }
 
-    // clear the close-up shot of foreground rubble
-    for (const m of this.foreground) m.visible = this.mode === 'overview';
+    // clear the close-up shot of any rubble between the camera and the fighter
+    const selF = this.fighters.find((F) => F.c.Id === this.selected);
+    for (const m of this.rubble) m.visible = this.mode === 'overview' || m.position.z < selF.home.z - 1;
 
     // projectiles
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i];
       p.life += dt;
-      p.m.position.x += dt * 0.006;
-      p.m.rotation.z += dt * 0.01;
-      const s = 1 + Math.sin(p.life * 0.05) * 0.12;
-      p.m.scale.set(s, s, s);
+      p.m.position.x += dt * PROJECTILE_SPEED;
+      this.drawProjectile(p);
       p.light.position.copy(p.m.position);
-      if (p.life > 1400) {
+      // fade out on reaching the bio panel, measured at the projectile's leading edge
+      const limit = this.cb.projectileLimit?.();
+      let alpha = 1;
+      if (limit != null) {
+        const nose = p.m.position.clone();
+        nose.x += p.m.geometry.parameters.width / 2;
+        nose.project(this.camera);
+        alpha = clamp((limit - ((nose.x + 1) / 2) * this.w) / PROJECTILE_FADE_PX, 0, 1);
+      }
+      p.m.material.opacity = alpha;
+      p.light.intensity = 6 * alpha;
+      if (alpha === 0 || p.life > PROJECTILE_MS) {
         this.scene.remove(p.m, p.light);
         p.m.geometry.dispose();
-        p.m.material.map.dispose();
+        p.tex.dispose();
         p.m.material.dispose();
         this.projectiles.splice(i, 1);
       }

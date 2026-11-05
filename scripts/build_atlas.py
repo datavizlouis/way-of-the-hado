@@ -56,6 +56,14 @@ def cut(rgba, bg, f):
     return tile
 
 
+def shadow_colour(rgba, bg, frames):
+    """The flat colour of the shadow painted under a move: commonest in the frames' bottom rows."""
+    rows = np.concatenate([rgba[y + h - 2:y + h, x:x + w, :3].reshape(-1, 3) for x, y, w, h, _ in frames])
+    rows = rows[~np.all(rows == bg, axis=-1) & ~np.all(rows == OUTER, axis=-1)]
+    colours, counts = np.unique(rows, axis=0, return_counts=True)
+    return colours[counts.argmax()]
+
+
 def main(slices):
     mapping = json.loads((ROOT / 'scripts' / 'sprite_map.json').read_text())
     PORTRAITS.mkdir(parents=True, exist_ok=True)
@@ -72,6 +80,9 @@ def main(slices):
             if name in ('portrait', 'idlePingpong'):
                 continue
             opts = v if isinstance(v, dict) else {'at': v}
+            if 'rects' in opts:
+                anims[name] = {'frames': [[*r, r[2] // 2] for r in opts['rects']], 'opts': opts}
+                continue
             panel = find_panel(meta['panels'], opts['at'])
             frames = panel['frames']
             if 'frames' in opts:
@@ -84,11 +95,17 @@ def main(slices):
         tiles = []
         index = {}
         for a in anims.values():
+            shadow = None
+            if a['opts'].get('noShadow'):
+                shadow = shadow_colour(sheet, bg, a['frames'])
             for f in a['frames']:
                 k = tuple(f)
                 if k not in index:
                     index[k] = len(tiles)
-                    tiles.append(cut(sheet, bg, f))
+                    t = cut(sheet, bg, f)
+                    if shadow is not None:
+                        t[np.all(t[..., :3] == shadow, axis=-1), 3] = 0
+                    tiles.append(t)
         x = y = shelf = 0
         places = []
         for t in tiles:
@@ -115,10 +132,8 @@ def main(slices):
             entry = {'fps': o.get('fps', 8 if name == 'idle' else 12), 'frames': fr}
             if name == 'idle' and spec.get('idlePingpong'):
                 entry['frames'] = fr + fr[-2:0:-1]
-            if o.get('event'):
-                entry['event'] = o['event']
-                ef = o.get('eventFrame', 0)
-                entry['eventFrame'] = len(fr) - 1 if ef < 0 else ef
+            if 'launch' in o:
+                entry['launch'] = o['launch']
             out[name] = entry
         sprites[sid] = {'file': f'{sid}.png', 'anims': out}
 

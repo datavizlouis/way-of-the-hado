@@ -1,16 +1,16 @@
 import React, { useEffect, useRef } from 'react';
-import { makeCoverStrokes, drawSequence } from '../lib/brush.js';
+import { makeBlob, drawBlob } from '../lib/brush.js';
 import { clamp, easeOut, easeInOut } from '../lib/rng.js';
 
-// room around the panel for splatter and ragged stroke ends, so the canvas never shows a hard edge
+// room around the panel for the splat's spikes and drops, so the canvas never shows a hard edge
 const BLEED = 70;
 
-// A DOM panel whose background is painted on with brush strokes when `open`
-// becomes true and pulled off again when it becomes false.
-export default function BrushPanel({ open, seed = 3, color = '#ece6d6', className = '', children, paintMs = 850, onClosed }) {
+// A DOM panel whose background is a calm, even ink splat that grows out when `open`
+// becomes true and pulls back when it becomes false.
+export default function SplatPanel({ open, seed = 3, color = '#ece6d6', className = '', children, paintMs = 700, onClosed }) {
   const ref = useRef(null);
   const canvasRef = useRef(null);
-  const state = useRef({ p: 0, target: 0, from: 0, start: 0, strokes: null, w: 0, h: 0 });
+  const state = useRef({ p: 0, target: 0, from: 0, start: 0, blob: null, w: 0, h: 0 });
 
   useEffect(() => {
     const s = state.current;
@@ -32,10 +32,8 @@ export default function BrushPanel({ open, seed = 3, color = '#ece6d6', classNam
       canvas.width = (r.width + BLEED * 2) * dpr;
       canvas.height = (r.height + BLEED * 2) * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, BLEED * dpr, BLEED * dpr);
-      s.strokes = makeCoverStrokes(r.width * 0.03, r.height * 0.02, r.width * 0.94, r.height * 0.96, seed, {
-        color,
-        rows: Math.max(4, Math.round(r.height / 120)),
-        dry: 0.6,
+      s.blob = makeBlob(0, 0, r.width, r.height, seed, {
+        color, spikes: 15, spikeLen: 38, spikeWidth: 1.9, rough: 0.035, square: 5, drops: 16, dropReach: 26, dropSize: 4,
       });
       s.dirty = true;
     };
@@ -51,7 +49,7 @@ export default function BrushPanel({ open, seed = 3, color = '#ece6d6', classNam
       if (prev === s.p && !s.dirty) return;
       s.dirty = false;
       ctx.clearRect(-BLEED, -BLEED, s.w + BLEED * 2, s.h + BLEED * 2);
-      drawSequence(ctx, s.strokes, s.p, { reverse: !s.target, overlap: 0.5 });
+      drawBlob(ctx, s.blob, s.p);
       if (!s.target && t >= 1 && prev !== 0) onClosed?.();
     };
     raf = requestAnimationFrame(loop);
@@ -62,14 +60,14 @@ export default function BrushPanel({ open, seed = 3, color = '#ece6d6', classNam
   }, [seed, color, paintMs, onClosed]);
 
   return (
-    <div ref={ref} className={`brush-panel ${open ? 'open' : ''} ${className}`}>
+    <div ref={ref} className={`splat-panel ${open ? 'open' : ''} ${className}`}>
       <canvas
         ref={canvasRef}
-        className="brush-panel-bg"
+        className="splat-panel-bg"
         style={{ inset: -BLEED, width: `calc(100% + ${BLEED * 2}px)`, height: `calc(100% + ${BLEED * 2}px)` }}
         aria-hidden="true"
       />
-      <div className="brush-panel-content">{children}</div>
+      <div className="splat-panel-content">{children}</div>
     </div>
   );
 }

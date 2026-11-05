@@ -1,5 +1,5 @@
 {
- "_doc": "Which sheet panel feeds which animation. Each value is a point [x, y] inside the panel on the raw sheet (app/assets/sprites/raw/<id>.gif). Move names must match the Moves column of data/characters.csv. Options: fps, event (projectile), eventFrame (-1 = last), pingpong, frames (subset of indices), maxWidth (skip frames wider than this, e.g. detached projectiles).",
+ "_doc": "Which sheet panel feeds which animation. Each value is a point [x, y] inside the panel on the raw sheet (app/assets/sprites/raw/<id>.gif). Move names must match the Moves column of data/characters.csv. Options: fps, pingpong, frames (subset of indices), maxWidth (skip frames wider than this), noShadow (erase the shadow painted into the frames, for moves that leave the ground), rects (explicit [x, y, w, h] boxes, used where the slicer can't find them: projectile flight frames are too small for it). 'projectile' lists a fighter's flight art: the first 'launch' rects play once and the rest loop. Frame order, travel and when a projectile fires live in app/src/lib/moveTimeline.js.",
  "ryu": {
   "idle": [
    60,
@@ -10,23 +10,107 @@
    900
   ],
   "Hadoken": {
-   "at": [ 180, 670 ],
-   "event": "projectile",
-   "eventFrame": -1
+   "at": [
+    180,
+    670
+   ],
+   "frames": [
+    0,
+    1,
+    2,
+    4
+   ]
   },
   "Shoryuken": {
-   "at": [ 780, 560 ]
+   "at": [
+    780,
+    560
+   ]
   },
   "Tatsumaki Senpukyaku": {
-   "at": [ 1150, 550 ]
+   "at": [
+    1150,
+    550
+   ]
   },
   "beat:punch": {
-   "at": [ 280, 160 ],
+   "at": [
+    280,
+    160
+   ],
    "fps": 10
   },
   "beat:facehit": {
-   "at": [ 290, 790 ],
+   "at": [
+    290,
+    790
+   ],
    "fps": 8
+  },
+  "projectile": {
+   "rects": [
+    [
+     378,
+     642,
+     34,
+     48
+    ],
+    [
+     419,
+     652,
+     37,
+     28
+    ],
+    [
+     465,
+     646,
+     33,
+     24
+    ],
+    [
+     593,
+     646,
+     18,
+     24
+    ],
+    [
+     551,
+     646,
+     33,
+     24
+    ],
+    [
+     664,
+     645,
+     23,
+     26
+    ],
+    [
+     484,
+     683,
+     36,
+     24
+    ],
+    [
+     530,
+     683,
+     21,
+     25
+    ],
+    [
+     558,
+     683,
+     33,
+     24
+    ],
+    [
+     600,
+     686,
+     13,
+     18
+    ]
+   ],
+   "launch": 2
   }
  },
  "ken": {
@@ -39,42 +123,138 @@
    930
   ],
   "Hadoken": {
-   "at": [ 750, 550 ],
-   "event": "projectile",
-   "eventFrame": -1
+   "at": [
+    750,
+    550
+   ],
+   "frames": [
+    0,
+    1,
+    2,
+    3
+   ]
   },
   "Shoryuken": {
-   "at": [ 160, 690 ]
+   "at": [
+    160,
+    690
+   ]
   },
   "Tatsumaki Senpukyaku": {
-   "at": [ 1250, 550 ]
+   "at": [
+    1250,
+    550
+   ]
   },
   "beat:punch": {
-   "at": [ 280, 160 ],
+   "at": [
+    280,
+    160
+   ],
    "fps": 10
+  },
+  "projectile": {
+   "rects": [
+    [
+     892,
+     548,
+     25,
+     27
+    ],
+    [
+     922,
+     549,
+     32,
+     23
+    ]
+   ],
+   "launch": 0
   }
  },
  "chunli": {
   "idle": {
-   "at": [ 100, 60 ],
-   "frames": [ 0, 1, 2, 3 ]
+   "at": [
+    100,
+    60
+   ],
+   "frames": [
+    0,
+    1,
+    2,
+    3
+   ]
   },
   "portrait": [
    410,
    1160
   ],
   "Kikoken": {
-   "at": [ 120, 630 ],
-   "event": "projectile",
-   "eventFrame": -1
+   "at": [
+    120,
+    630
+   ]
   },
   "Hyakuretsukyaku": {
-   "at": [ 830, 640 ],
+   "at": [
+    830,
+    640
+   ],
    "fps": 16,
-   "frames": [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 ]
+   "frames": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    6
+   ]
   },
   "Spinning Bird Kick": {
-   "at": [ 500, 770 ]
+   "at": [
+    500,
+    770
+   ]
+  },
+  "projectile": {
+   "rects": [
+    [
+     265,
+     611,
+     15,
+     23
+    ],
+    [
+     298,
+     611,
+     20,
+     23
+    ],
+    [
+     364,
+     608,
+     29,
+     28
+    ],
+    [
+     400,
+     608,
+     35,
+     27
+    ],
+    [
+     441,
+     610,
+     36,
+     24
+    ],
+    [
+     482,
+     610,
+     38,
+     23
+    ]
+   ],
+   "launch": 2
   }
  },
  "guile": {
@@ -87,12 +267,45 @@
    1110
   ],
   "Sonic Boom": {
-   "at": [ 100, 660 ],
-   "event": "projectile",
-   "eventFrame": -1
+   "at": [
+    100,
+    660
+   ]
   },
   "Flash Kick": {
-   "at": [ 700, 660 ]
+   "at": [
+    700,
+    660
+   ]
+  },
+  "projectile": {
+   "rects": [
+    [
+     226,
+     658,
+     39,
+     16
+    ],
+    [
+     271,
+     671,
+     36,
+     8
+    ],
+    [
+     313,
+     658,
+     39,
+     16
+    ],
+    [
+     358,
+     653,
+     36,
+     8
+    ]
+   ],
+   "launch": 0
   }
  },
  "blanka": {
@@ -105,11 +318,17 @@
    1570
   ],
   "Electric Thunder": {
-   "at": [ 260, 750 ],
+   "at": [
+    260,
+    750
+   ],
    "fps": 14
   },
   "Rolling Attack": {
-   "at": [ 700, 750 ]
+   "at": [
+    700,
+    750
+   ]
   }
  },
  "zangief": {
@@ -122,10 +341,16 @@
    1490
   ],
   "Spinning Piledriver": {
-   "at": [ 600, 820 ]
+   "at": [
+    600,
+    820
+   ]
   },
   "Double Lariat": {
-   "at": [ 290, 570 ]
+   "at": [
+    290,
+    570
+   ]
   }
  },
  "honda": {
@@ -138,11 +363,18 @@
    1200
   ],
   "Hundred Hand Slap": {
-   "at": [ 290, 680 ],
+   "at": [
+    290,
+    680
+   ],
    "fps": 16
   },
   "Sumo Headbutt": {
-   "at": [ 290, 800 ]
+   "at": [
+    290,
+    800
+   ],
+   "noShadow": true
   }
  },
  "dhalsim": {
@@ -155,13 +387,56 @@
    880
   ],
   "Yoga Fire": {
-   "at": [ 450, 530 ]
+   "at": [
+    450,
+    530
+   ]
   },
   "Yoga Flame": {
-   "at": [ 1100, 530 ]
+   "at": [
+    1100,
+    530
+   ],
+   "frames": [
+    0,
+    1,
+    2,
+    4,
+    6,
+    8,
+    10,
+    11,
+    12
+   ]
   },
   "Yoga Teleport": {
-   "at": [ 80, 650 ]
+   "at": [
+    80,
+    650
+   ]
+  },
+  "projectile": {
+   "rects": [
+    [
+     627,
+     519,
+     28,
+     18
+    ],
+    [
+     663,
+     519,
+     27,
+     18
+    ],
+    [
+     698,
+     520,
+     27,
+     15
+    ]
+   ],
+   "launch": 0
   }
  },
  "balrog": {
@@ -174,10 +449,16 @@
    1150
   ],
   "Dash Straight": {
-   "at": [ 190, 650 ]
+   "at": [
+    190,
+    650
+   ]
   },
   "Dash Uppercut": {
-   "at": [ 520, 650 ]
+   "at": [
+    520,
+    650
+   ]
   }
  },
  "vega": {
@@ -190,10 +471,16 @@
    1220
   ],
   "Rolling Crystal Flash": {
-   "at": [ 350, 680 ]
+   "at": [
+    350,
+    680
+   ]
   },
   "Flying Barcelona Attack": {
-   "at": [ 770, 680 ]
+   "at": [
+    770,
+    680
+   ]
   }
  },
  "sagat": {
@@ -206,23 +493,59 @@
    1420
   ],
   "Tiger Shot": {
-   "at": [ 120, 880 ],
-   "event": "projectile",
-   "eventFrame": -1
+   "at": [
+    120,
+    880
+   ]
   },
   "Tiger Uppercut": {
-   "at": [ 240, 1010 ]
+   "at": [
+    240,
+    1010
+   ]
   },
   "Tiger Knee": {
-   "at": [ 570, 760 ]
+   "at": [
+    570,
+    760
+   ]
   },
   "beat:hit": {
-   "at": [ 300, 1160 ],
+   "at": [
+    300,
+    1160
+   ],
    "fps": 8
   },
   "beat:ko": {
-   "at": [ 350, 1300 ],
+   "at": [
+    350,
+    1300
+   ],
    "fps": 8
+  },
+  "projectile": {
+   "rects": [
+    [
+     492,
+     866,
+     20,
+     16
+    ],
+    [
+     526,
+     861,
+     15,
+     26
+    ],
+    [
+     554,
+     860,
+     22,
+     28
+    ]
+   ],
+   "launch": 0
   }
  },
  "bison": {
@@ -235,13 +558,22 @@
    960
   ],
   "Psycho Crusher": {
-   "at": [ 370, 800 ]
+   "at": [
+    370,
+    800
+   ]
   },
   "Scissor Kick": {
-   "at": [ 960, 800 ]
+   "at": [
+    960,
+    800
+   ]
   },
   "Head Press": {
-   "at": [ 730, 500 ]
+   "at": [
+    730,
+    500
+   ]
   }
  },
  "cammy": {
@@ -255,10 +587,86 @@
   ],
   "idlePingpong": true,
   "Spiral Arrow": {
-   "at": [ 480, 590 ]
+   "rects": [
+    [
+     5,
+     551,
+     47,
+     74
+    ],
+    [
+     57,
+     552,
+     44,
+     73
+    ],
+    [
+     108,
+     559,
+     54,
+     66
+    ],
+    [
+     169,
+     576,
+     96,
+     24
+    ],
+    [
+     272,
+     575,
+     96,
+     26
+    ],
+    [
+     374,
+     580,
+     96,
+     24
+    ],
+    [
+     476,
+     577,
+     96,
+     24
+    ],
+    [
+     579,
+     576,
+     96,
+     28
+    ],
+    [
+     679,
+     577,
+     96,
+     24
+    ],
+    [
+     782,
+     578,
+     88,
+     31
+    ],
+    [
+     875,
+     575,
+     43,
+     52
+    ],
+    [
+     931,
+     575,
+     45,
+     50
+    ]
+   ]
   },
   "Cannon Spike": {
-   "at": [ 240, 690 ]
+   "at": [
+    240,
+    690
+   ]
   }
  },
  "feilong": {
@@ -271,10 +679,16 @@
    1030
   ],
   "Rekkaken": {
-   "at": [ 660, 560 ]
+   "at": [
+    660,
+    560
+   ]
   },
   "Shienkyaku": {
-   "at": [ 420, 680 ]
+   "at": [
+    420,
+    680
+   ]
   }
  },
  "deejay": {
@@ -287,13 +701,64 @@
    1520
   ],
   "Max Out": {
-   "at": [ 220, 910 ],
-   "event": "projectile",
-   "eventFrame": -1
+   "at": [
+    220,
+    910
+   ]
   },
   "Machine Gun Upper": {
-   "at": [ 600, 1030 ],
+   "at": [
+    600,
+    1030
+   ],
    "fps": 14
+  },
+  "projectile": {
+   "rects": [
+    [
+     460,
+     894,
+     33,
+     46
+    ],
+    [
+     497,
+     908,
+     44,
+     20
+    ],
+    [
+     597,
+     918,
+     42,
+     4
+    ],
+    [
+     648,
+     915,
+     42,
+     4
+    ],
+    [
+     693,
+     912,
+     44,
+     10
+    ],
+    [
+     742,
+     915,
+     42,
+     4
+    ],
+    [
+     791,
+     918,
+     42,
+     4
+    ]
+   ],
+   "launch": 2
   }
  },
  "thawk": {
@@ -306,10 +771,16 @@
    1280
   ],
   "Tomahawk Buster": {
-   "at": [ 300, 710 ]
+   "at": [
+    300,
+    710
+   ]
   },
   "Condor Dive": {
-   "at": [ 770, 710 ]
+   "at": [
+    770,
+    710
+   ]
   }
  }
 }

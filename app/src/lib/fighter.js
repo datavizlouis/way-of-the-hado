@@ -10,6 +10,7 @@
 
 import { getSpriteConfig, getImage } from '../assets.js';
 import { shade, clamp } from './rng.js';
+import { moveTimeline } from './moveTimeline.js';
 
 export const SPRITE_SIZE = 128;
 export const SHEET_SIZE = 200; // canvas for sprite-sheet fighters (native pixel scale)
@@ -175,6 +176,21 @@ export class Fighter {
     return !!(this.sheetImg && this.sheetImg.complete && this.sheetImg.naturalWidth);
   }
 
+  /** The current move's timeline (empty when idle). */
+  get timeline() {
+    return this.moveName ? moveTimeline(this.c.Id, this.moveName) : {};
+  }
+
+  /** Position in the move's frame sequence, fractional: 3 is the moment its 4th step appears. */
+  get position() {
+    return this.usingSheet && this.sheetAnim ? (this.t / 1000) * (this.sheetAnim.fps || 10) : 0;
+  }
+
+  /** The sheet frame on screen: [x, y, w, h, anchorX, lift]. */
+  get sheetFrame() {
+    return this.sheetAnim ? this.sheetAnim.frames[this.frame % this.sheetAnim.frames.length] : null;
+  }
+
   /** Start a move by name (from the CSV) — null returns to idle. */
   setMove(name) {
     const move = name ? this.moves.find((m) => m.name === name) : null;
@@ -188,8 +204,22 @@ export class Fighter {
     // sprite sheet timeline (if supplied)
     if (this.sheet) {
       const a = this.sheet.anims || {};
-      this.sheetAnim = (move && (a[move.name] || a[move.kind])) || a.idle || null;
+      const base = (move && (a[move.name] || a[move.kind])) || a.idle || null;
+      this.sheetAnim = move && base ? this.withTimeline(base, moveTimeline(this.c.Id, move.name)) : base;
     }
+  }
+
+  /** A move's frames in timeline order, lined up on the back edge if the timeline asks. */
+  withTimeline(anim, tl) {
+    const source = tl.anchors
+      ? anim.frames.map(([x, y, w, h, ax, lift], i) => [x, y, w, h, tl.anchors[i] ?? ax, lift])
+      : anim.frames;
+    let frames = tl.seq ? tl.seq.map((i) => source[i]) : source;
+    if (tl.rear) {
+      const ax = anim.frames[0][4];
+      frames = frames.map(([x, y, w, h, , lift]) => [x, y, w, h, ax, lift]);
+    }
+    return { ...anim, frames, event: tl.fire != null ? 'projectile' : null, eventFrame: tl.fire };
   }
 
   /** Advance the animation. Returns true if the canvas changed. */

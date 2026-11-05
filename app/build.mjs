@@ -7,7 +7,7 @@
 // Assets in app/assets/ (all optional):
 //   img/**, sprites/*.png, fonts/*  -> inlined as data URIs into hado-assets.js
 //   sprites/sprites.json            -> sprite sheet frame definitions
-//   audio/<id>.mp3|ogg|m4a          -> copied next to the bundle, played via <audio>
+//   audio/<id>.mp3|ogg|m4a|wav      -> wrapped as src/audio/<id>.js, decoded by Web Audio
 
 import * as esbuild from 'esbuild';
 import fs from 'node:fs';
@@ -49,11 +49,13 @@ function buildAssets() {
     const abs = path.join(ASSETS, rel);
     if (rel.startsWith('audio/')) {
       if (!['.mp3', '.ogg', '.m4a', '.wav'].includes(ext)) continue;
+      if (ext === '.wav' && fs.existsSync(abs.slice(0, -ext.length) + '.mp3')) continue; // WAVs are the masters
+      // wrapped as a script: Tableau's sandbox won't load package files as media or by fetch()
       const id = path.basename(rel, ext);
-      const dest = path.join(OUT, 'assets', 'audio', path.basename(rel));
+      const dest = path.join(OUT, 'src', 'audio', `${id}.js`);
       fs.mkdirSync(path.dirname(dest), { recursive: true });
-      fs.copyFileSync(abs, dest);
-      audio[id] = `assets/audio/${path.basename(rel)}`;
+      fs.writeFileSync(dest, `window.HADO_TRACK(${JSON.stringify(id)},"${fs.readFileSync(abs).toString('base64')}");`);
+      audio[id] = `src/audio/${id}.js`;
       continue;
     }
     if (!MIME[ext]) continue;
@@ -110,6 +112,7 @@ function html(extra = '') {
 fs.mkdirSync(path.join(OUT, 'src'), { recursive: true });
 // drop stale audio from earlier builds
 fs.rmSync(path.join(OUT, 'assets'), { recursive: true, force: true });
+fs.rmSync(path.join(OUT, 'src', 'audio'), { recursive: true, force: true });
 buildAssets();
 
 await esbuild.build({

@@ -1,12 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Fighter } from '../lib/fighter.js';
-import { Chiptune } from '../lib/chiptune.js';
-import { assetUrl, audioUrl } from '../assets.js';
+import { playTrack, playSfx, preloadSfx, isPlaying, subscribe, trackLevels, audioProblem } from '../lib/player.js';
+import { assetUrl } from '../assets.js';
 import { useInView } from '../lib/useInView.js';
 import { drawStageMap, STAGES, FLAG_POS, MAP_W, MAP_H } from '../lib/stageMap.js';
 import { getImage } from '../assets.js';
 
 const COLS = 8;
+// the "?" tile: the franchise theme, and where the cursor starts. Its Id picks the audio
+// file (assets/audio/opening.wav). It has no stage, so the map lights nothing up.
+const THEME = { Id: 'opening', Name: 'Street Fighter', Country: 'Main theme', Theme: 'Street Fighter Theme' };
 
 function Portrait({ character }) {
   const ref = useRef(null);
@@ -69,77 +72,37 @@ function StageMap({ character }) {
   );
 }
 
-export default function Soundtrack({ characters, height }) {
+export default function Soundtrack({ characters }) {
   const sectionRef = useRef(null);
   const eqRef = useRef(null);
   const [cursor, setCursor] = useState(0);
-  const [armed, setArmed] = useState(false); // audio unlocked by a first click / key press
-  const [playing, setPlaying] = useState(false);
-  const [volume] = useState(0.6);
-  const chip = useMemo(() => new Chiptune(), []);
-  const audio = useRef(null);
-  const timer = useRef(null);
+  const [playing, setPlaying] = useState(isPlaying);
+  const [track, setTrack] = useState(0); // the item whose music is on; the cursor only browses
   const inView = useInView(sectionRef, 0.01);
 
-  const shown = characters[cursor];
-  const fileUrl = shown ? audioUrl(shown.Id) : null;
+  const items = useMemo(() => [THEME, ...characters], [characters]);
+  const shown = items[cursor]; // under the cursor
+  const picked = items[track]; // clicked: the portrait waits for this
 
-  const stopAll = () => {
-    clearTimeout(timer.current);
-    chip.stop();
-    if (audio.current) audio.current.pause();
-    setPlaying(false);
-  };
+  const [problem, setProblem] = useState(audioProblem);
+  useEffect(() => {
+    const sync = () => {
+      setPlaying(isPlaying());
+      setProblem(audioProblem());
+    };
+    sync(); // the music may have started before this screen was ready to hear about it
+    return subscribe(sync);
+  }, []);
 
-  const playFor = (i) => {
-    chip.stop();
-    if (audio.current) audio.current.pause();
-    const c = characters[i];
-    const url = audioUrl(c.Id);
-    if (url) {
-      if (!audio.current) audio.current = new Audio();
-      audio.current.src = url;
-      audio.current.loop = true;
-      audio.current.volume = volume;
-      audio.current.play().catch(() => {});
-    } else {
-      chip.setVolume(volume);
-      chip.play(c.Id);
-    }
-    setPlaying(true);
-  };
+  useEffect(() => preloadSfx(['select']), []);
 
-  // the theme simply follows the selected fighter (debounced so sweeping the cursor
-  // across the grid doesn't restart the music on every tile)
-  const select = (i, { immediate = false } = {}) => {
+  // hovering browses; only a click (or Enter / Space on the keyboard) changes the portrait and music
+  const choose = (i) => {
     setCursor(i);
-    if (!armed) return;
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => playFor(i), immediate ? 0 : 220);
+    setTrack(i);
+    playSfx('select');
+    playTrack(items[i].Id);
   };
-
-  // first gesture in the section unlocks audio and starts the current fighter's theme
-  const arm = () => {
-    if (armed) return;
-    setArmed(true);
-    playFor(cursor);
-  };
-
-
-  useEffect(() => {
-    chip.setVolume(volume);
-    if (audio.current) audio.current.volume = volume;
-  }, [volume, chip]);
-
-  // stop when the section scrolls away; the next fighter change starts it again
-  useEffect(() => {
-    const t = setInterval(() => {
-      if (!inView.current && playing) stopAll();
-    }, 400);
-    return () => clearInterval(t);
-  });
-
-  useEffect(() => () => stopAll(), []);
 
   // equaliser
   useEffect(() => {
@@ -151,7 +114,7 @@ export default function Soundtrack({ characters, height }) {
     const loop = (now) => {
       raf = requestAnimationFrame(loop);
       if (!inView.current) return;
-      const real = !fileUrl && playing ? chip.levels(bars) : null;
+      const real = playing ? trackLevels(bars) : null;
       for (let i = 0; i < bars; i++) {
         const target = playing
           ? real
@@ -176,44 +139,42 @@ export default function Soundtrack({ characters, height }) {
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [playing, fileUrl, chip]);
+  }, [playing]);
 
   const onKey = (e) => {
-    const n = characters.length;
+    // items[0] is the 2x2 "?" tile to the left of both rows; fighters follow in rows of COLS
+    const n = items.length;
+    const col = (cursor - 1) % COLS;
     let next = cursor;
     if (e.key === 'ArrowRight') next = (cursor + 1) % n;
-    else if (e.key === 'ArrowLeft') next = (cursor - 1 + n) % n;
-    else if (e.key === 'ArrowDown') next = Math.min(n - 1, cursor + COLS);
-    else if (e.key === 'ArrowUp') next = Math.max(0, cursor - COLS);
+    else if (e.key === 'ArrowLeft') next = cursor === 0 ? n - 1 : col === 0 ? 0 : cursor - 1;
+    else if (e.key === 'ArrowDown') next = cursor === 0 ? 0 : Math.min(n - 1, cursor + COLS);
+    else if (e.key === 'ArrowUp') next = cursor > COLS ? cursor - COLS : cursor;
     else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      arm();
+      choose(cursor);
       return;
     } else return;
     e.preventDefault();
-    arm();
-    select(next);
+    setCursor(next);
   };
 
-  const namedPortrait = shown ? assetUrl(`img/select/${shown.Id}.png`) : null;
+  const namedPortrait = assetUrl(`img/select/${picked.Id}.png`);
   const bgTile = assetUrl('img/select-bg.png');
   return (
     <section
-      className="soundtrack"
+      className="soundtrack screen"
       ref={sectionRef}
-      onPointerDown={arm}
-      style={{
-        height,
-        ...(bgTile && {
+      style={
+        bgTile && {
           backgroundImage: `linear-gradient(rgba(4,6,20,0.55), rgba(4,6,20,0.8)), url(${bgTile})`,
           backgroundSize: 'auto, 512px auto',
-        }),
-      }}
+        }
+      }
       aria-label="Soundtracks"
     >
       <div className="crt" aria-hidden="true" />
       <header className="ost-head">
-        <p className="pixel eyebrow-pixel">Sound test</p>
         <h2 className="pixel ost-title">Player select</h2>
       </header>
 
@@ -223,20 +184,21 @@ export default function Soundtrack({ characters, height }) {
 
       <div className="ost-select">
         <div className="p1-portrait">
-          <span className="player-tag pixel">1P</span>
-          {namedPortrait ? (
+          {picked === THEME ? (
+            <div className="q-portrait pixel" aria-hidden="true">?</div>
+          ) : namedPortrait ? (
             <img className="select-portrait" src={namedPortrait} alt="" />
           ) : (
-            <div className="nameplate pixel">{shown?.Name?.toUpperCase()}</div>
+            <div className="nameplate pixel">{picked.Name.toUpperCase()}</div>
           )}
           <span className="sr-only">
-            {shown?.Name}, {shown?.Country}
+            {picked.Name}, {picked.Country}
           </span>
         </div>
         <div className="select-col">
           <div className="now-playing">
-            <p className="pixel small-pixel dimmed">{playing ? 'Now playing' : armed ? 'Paused' : 'Sound test'}</p>
-            <p className="pixel track">{playing || armed ? shown?.Theme : 'Click a fighter to start the music'}</p>
+            <p className="pixel small-pixel dimmed" style={{ visibility: playing ? 'visible' : 'hidden' }}>Now playing</p>
+            <p className="pixel track">{playing ? items[track].Theme : 'Click anywhere to start the music'}</p>
             <canvas ref={eqRef} width="160" height="40" className="eq" aria-hidden="true" />
           </div>
         <div
@@ -246,24 +208,21 @@ export default function Soundtrack({ characters, height }) {
           tabIndex={0}
           aria-activedescendant={`ost-${shown?.Id}`}
           onKeyDown={onKey}
-          style={{ '--cols': COLS }}
+          style={{ '--cols': COLS + 2 }}
         >
-          {characters.map((c, i) => (
+          {items.map((c, i) => (
             <button
               key={c.Id}
               id={`ost-${c.Id}`}
               role="option"
               aria-selected={cursor === i}
-              className={`tile ${cursor === i ? 'cursor' : ''}`}
-              onMouseEnter={() => select(i)}
-              onFocus={() => select(i)}
-              onClick={() => {
-                if (!armed) arm();
-                select(i, { immediate: true });
-              }}
+              className={`tile ${c === THEME ? 'tile-q' : ''} ${cursor === i ? 'cursor' : ''}`}
+              onMouseEnter={() => setCursor(i)}
+              onFocus={() => setCursor(i)}
+              onClick={() => choose(i)}
               title={c.Name}
             >
-              <Portrait character={c} />
+              {c === THEME ? <span className="q-mark pixel" aria-hidden="true">?</span> : <Portrait character={c} />}
               {cursor === i && <span className="cursor-tag pixel">1P</span>}
               <span className="sr-only">{c.Name}</span>
             </button>
@@ -271,11 +230,7 @@ export default function Soundtrack({ characters, height }) {
         </div>
         </div>
       </div>
-      <p className="ost-note">
-        {fileUrl
-          ? 'Hover or use the arrow keys to switch fighters; their theme follows.'
-          : `Hover or use the arrow keys to switch fighters. Placeholder chiptune: add assets/audio/${shown?.Id}.mp3 for the real theme.`}
-      </p>
+      {problem && <p className="ost-note error">{problem}</p>}
     </section>
   );
 }

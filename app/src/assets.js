@@ -3,8 +3,8 @@
 // Images, fonts and sprite sheets placed in app/assets/ are inlined by build.mjs into
 // window.HADO_ASSETS as data URIs (src/assets.gen.js, loaded before app.js). Data URIs
 // keep the canvases untainted so WebGL can upload them inside the Tableau sandbox,
-// where the page origin is opaque. Audio files are copied next to the bundle instead
-// (playback through <audio> does not need CORS) and listed in HADO_ASSETS.audio.
+// where the page origin is opaque. Audio tracks are wrapped as scripts next to the bundle
+// (see lib/player.js) and listed in HADO_ASSETS.audio.
 //
 // Every slot is optional: the app falls back to procedural art / chiptune when empty.
 

@@ -64,47 +64,17 @@ export function logoSplats(w) {
 }
 
 /**
- * Draw the logo into a new canvas `w` px wide. Returns { canvas, w, h, dot } where `dot`
- * is the centre of HADO's "A" (logo-local px), where the red energy is anchored.
- * The layout: a smaller "WAY OF THE" on the first line, a big "HADO" on the second, and
- * 波動の道 ("the way of the surge") tucked under the right of HADO.
+ * Paint one word in the HADO style: a ragged black brush border under a yellow-orange-red
+ * fill with brush streaks and a hot top highlight. `word` carries text, fs, x, y, scale and
+ * fl (its flame flicks); the lean pivots on h / 2. Draws onto ctx in device pixels.
  */
-export function renderLogo(w, dpr = 1) {
-  const rng = makeRng(77);
-  const fsBig = w * BIG;
-  const fsSmall = fsBig * 0.3;
-  const h = logoHeight(w);
-  const c = document.createElement('canvas');
-  c.width = Math.round(w * dpr);
-  c.height = Math.round(h * dpr);
-  const ctx = c.getContext('2d');
-  ctx.scale(dpr, dpr);
-
-  // the two words, in a skewed space so the letters lean forward
-  const top = { text: 'WAY OF THE', fs: fsSmall, y: h * 0.08, flicks: 0, fit: 0.6 };
-  const hado = { text: 'HADO', fs: fsBig, y: h * 0.6, flicks: 6, fit: 0.78 };
-  const words = [top, hado];
-  ctx.save();
-  ctx.translate(0, h * 0.5);
-  ctx.transform(1, 0, SKEW, 1, 0, 0);
-  ctx.translate(0, -h * 0.5);
-  ctx.textBaseline = 'middle';
-  ctx.lineJoin = 'round';
-  ctx.lineCap = 'round';
-  for (const wd of words) {
-    ctx.font = `${wd.fs}px ${LOGO_FONT}`;
-    wd.w = ctx.measureText(wd.text).width;
-    // squeeze a word to fit if the font runs wide, then centre it (allowing for the lean)
-    wd.scale = Math.min(1, (w * wd.fit) / wd.w);
-    wd.x = (w - wd.w * wd.scale) / 2 - SKEW * (wd.y - h * 0.5);
-    wd.fl = flicks(rng, wd.x, wd.y, wd.fs, wd.w * wd.scale, wd.flicks, h);
-  }
+function paintFireWord(ctx, word, w, h, dpr, rng) {
   // 1. black brush border under everything, on its own layer: several jittered passes give
   // it a lumpy hand-painted edge, then thin bristle gaps are scratched out of the outer rim
   // (the fire fill covers the inside, so the scratches only show at the border)
   const keyC = document.createElement('canvas');
-  keyC.width = c.width;
-  keyC.height = c.height;
+  keyC.width = ctx.canvas.width;
+  keyC.height = ctx.canvas.height;
   const k = keyC.getContext('2d');
   k.scale(dpr, dpr);
   k.translate(0, h * 0.5);
@@ -115,7 +85,7 @@ export function renderLogo(w, dpr = 1) {
   k.lineCap = 'round';
   k.fillStyle = KEY;
   k.strokeStyle = KEY;
-  for (const wd of [hado]) {
+  for (const wd of [word]) {
     for (const fl of wd.fl) {
       flickPath(k, fl);
       k.lineWidth = wd.fs * 0.08;
@@ -154,15 +124,15 @@ export function renderLogo(w, dpr = 1) {
   ctx.restore();
   // 2. fire fill, on its own layer so the texture can be clipped to it
   const fire = document.createElement('canvas');
-  fire.width = c.width;
-  fire.height = c.height;
+  fire.width = ctx.canvas.width;
+  fire.height = ctx.canvas.height;
   const f = fire.getContext('2d');
   f.scale(dpr, dpr);
   f.translate(0, h * 0.5);
   f.transform(1, 0, SKEW, 1, 0, 0);
   f.translate(0, -h * 0.5);
   f.textBaseline = 'middle';
-  for (const wd of [hado]) {
+  for (const wd of [word]) {
     const grad = fireGradient(f, wd.y - wd.fs * 0.42, wd.y + wd.fs * 0.42);
     f.fillStyle = grad;
     for (const fl of wd.fl) {
@@ -189,17 +159,17 @@ export function renderLogo(w, dpr = 1) {
   for (let i = 0; i < 90; i++) {
     const x = rng() * w;
     const y = rng() * h;
-    const len = fsBig * (0.2 + rng() * 0.6);
+    const len = word.fs * (0.2 + rng() * 0.6);
     const hot = rng() < 0.45;
     f.strokeStyle = hot ? 'rgba(255,248,200,0.35)' : 'rgba(170,30,10,0.28)';
-    f.lineWidth = 1 + rng() * fsBig * 0.02;
+    f.lineWidth = 1 + rng() * word.fs * 0.02;
     f.beginPath();
     f.moveTo(x, y);
     f.lineTo(x - len, y + len * (0.15 + rng() * 0.2));
     f.stroke();
   }
   // a hot highlight along the top of each letter
-  for (const wd of [hado]) {
+  for (const wd of [word]) {
     f.save();
     f.translate(wd.x, wd.y);
     f.scale(wd.scale, 1);
@@ -215,6 +185,62 @@ export function renderLogo(w, dpr = 1) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.drawImage(fire, 0, 0);
   ctx.restore();
+}
+
+/** A single word or phrase in the HADO style, on a new canvas `w` px wide. Returns { canvas, w, h }. */
+export function renderFireText(text, w, dpr = 1) {
+  const rng = makeRng(77);
+  const probe = document.createElement('canvas').getContext('2d');
+  probe.font = `100px ${LOGO_FONT}`;
+  const fs = (100 * w * 0.9) / probe.measureText(text).width;
+  const h = Math.round(fs * 1.35);
+  const c = document.createElement('canvas');
+  c.width = Math.round(w * dpr);
+  c.height = Math.round(h * dpr);
+  const ctx = c.getContext('2d');
+  const word = { text, fs, y: h * 0.5, scale: 1, x: w * 0.07 };
+  word.fl = flicks(rng, word.x, word.y, fs, w * 0.9, 3, h);
+  paintFireWord(ctx, word, w, h, dpr, rng);
+  return { canvas: c, w, h };
+}
+
+/**
+ * Draw the logo into a new canvas `w` px wide. Returns { canvas, w, h, dot } where `dot`
+ * is the centre of HADO's "A" (logo-local px), where the red energy is anchored.
+ * The layout: a smaller "WAY OF THE" on the first line, a big "HADO" on the second, and
+ * 波動の道 ("the way of the surge") inside the black splat, under HADO.
+ */
+export function renderLogo(w, dpr = 1) {
+  const rng = makeRng(77);
+  const fsBig = w * BIG;
+  const fsSmall = fsBig * 0.3;
+  const h = logoHeight(w);
+  const c = document.createElement('canvas');
+  c.width = Math.round(w * dpr);
+  c.height = Math.round(h * dpr);
+  const ctx = c.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  // the two words, in a skewed space so the letters lean forward
+  const top = { text: 'WAY OF THE', fs: fsSmall, y: h * 0.08, flicks: 0, fit: 0.6 };
+  const hado = { text: 'HADO', fs: fsBig, y: h * 0.6, flicks: 6, fit: 0.78 };
+  const words = [top, hado];
+  ctx.save();
+  ctx.translate(0, h * 0.5);
+  ctx.transform(1, 0, SKEW, 1, 0, 0);
+  ctx.translate(0, -h * 0.5);
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  for (const wd of words) {
+    ctx.font = `${wd.fs}px ${LOGO_FONT}`;
+    wd.w = ctx.measureText(wd.text).width;
+    // squeeze a word to fit if the font runs wide, then centre it (allowing for the lean)
+    wd.scale = Math.min(1, (w * wd.fit) / wd.w);
+    wd.x = (w - wd.w * wd.scale) / 2 - SKEW * (wd.y - h * 0.5);
+    wd.fl = flicks(rng, wd.x, wd.y, wd.fs, wd.w * wd.scale, wd.flicks, h);
+  }
+  paintFireWord(ctx, hado, w, h, dpr, rng);
   // "WAY OF THE": plain white, same lean
   ctx.save();
   ctx.translate(top.x, top.y);
@@ -233,12 +259,12 @@ export function renderLogo(w, dpr = 1) {
   const dot = { x: ax + SKEW * (ay - h * 0.5), y: ay, fs: hado.fs };
   ctx.restore();
 
-  // subtitle in Japanese under the right side of HADO
+  // subtitle in Japanese, on the black splat under HADO
   const jfs = Math.max(12, fsBig * 0.1);
   ctx.font = `700 ${jfs}px "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif CJK JP", serif`;
   ctx.textAlign = 'right';
   ctx.textBaseline = 'top';
   ctx.fillStyle = 'rgba(246,243,234,0.85)';
-  ctx.fillText('波動の道', w * 0.86, h * 0.88);
+  ctx.fillText('波動の道', w * 0.7, h * 0.875);
   return { canvas: c, w, h, dot };
 }
