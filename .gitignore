@@ -2,3 +2,11 @@ node_modules/
 app/dev-out/
 dist/
 .DS_Store
+# Capcom artwork (local only; see app/assets/README.md)
+app/assets/sprites/raw/
+app/assets/sprites/*.png
+app/assets/img/portraits/
+app/assets/audio/
+tableau/Packages/*/content/src/hado-assets.js
+tableau/Packages/*/content/assets/
+__pycache__/

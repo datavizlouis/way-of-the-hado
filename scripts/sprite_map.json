@@ -1,0 +1,295 @@
+{
+ "_doc": "Which sheet panel feeds which animation. Each value is a point [x, y] inside the panel on the raw sheet (app/assets/sprites/raw/<id>.gif). Move names must match the Moves column of data/characters.csv. Options: fps, event (projectile), eventFrame (-1 = last), pingpong, frames (subset of indices), maxWidth (skip frames wider than this, e.g. detached projectiles).",
+ "ryu": {
+  "idle": [
+   60,
+   50
+  ],
+  "portrait": [
+   930,
+   900
+  ],
+  "Hadoken": {
+   "at": [ 180, 670 ],
+   "event": "projectile",
+   "eventFrame": -1
+  },
+  "Shoryuken": {
+   "at": [ 780, 560 ]
+  },
+  "Tatsumaki Senpukyaku": {
+   "at": [ 1150, 550 ]
+  }
+ },
+ "ken": {
+  "idle": [
+   100,
+   50
+  ],
+  "portrait": [
+   760,
+   930
+  ],
+  "Hadoken": {
+   "at": [ 750, 550 ],
+   "event": "projectile",
+   "eventFrame": -1
+  },
+  "Shoryuken": {
+   "at": [ 160, 690 ]
+  },
+  "Tatsumaki Senpukyaku": {
+   "at": [ 1250, 550 ]
+  }
+ },
+ "chunli": {
+  "idle": {
+   "at": [ 100, 60 ],
+   "frames": [ 0, 1, 2, 3 ]
+  },
+  "portrait": [
+   410,
+   1160
+  ],
+  "Kikoken": {
+   "at": [ 120, 630 ],
+   "event": "projectile",
+   "eventFrame": -1
+  },
+  "Hyakuretsukyaku": {
+   "at": [ 830, 640 ],
+   "fps": 16,
+   "frames": [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 ]
+  },
+  "Spinning Bird Kick": {
+   "at": [ 500, 770 ]
+  }
+ },
+ "guile": {
+  "idle": [
+   90,
+   60
+  ],
+  "portrait": [
+   950,
+   1110
+  ],
+  "Sonic Boom": {
+   "at": [ 100, 660 ],
+   "event": "projectile",
+   "eventFrame": -1
+  },
+  "Flash Kick": {
+   "at": [ 700, 660 ]
+  }
+ },
+ "blanka": {
+  "idle": [
+   130,
+   70
+  ],
+  "portrait": [
+   920,
+   1570
+  ],
+  "Electric Thunder": {
+   "at": [ 260, 750 ],
+   "fps": 14
+  },
+  "Rolling Attack": {
+   "at": [ 700, 750 ]
+  }
+ },
+ "zangief": {
+  "idle": [
+   100,
+   70
+  ],
+  "portrait": [
+   40,
+   1490
+  ],
+  "Spinning Piledriver": {
+   "at": [ 600, 820 ]
+  },
+  "Double Lariat": {
+   "at": [ 290, 570 ]
+  }
+ },
+ "honda": {
+  "idle": [
+   140,
+   70
+  ],
+  "portrait": [
+   550,
+   1200
+  ],
+  "Hundred Hand Slap": {
+   "at": [ 290, 680 ],
+   "fps": 16
+  },
+  "Sumo Headbutt": {
+   "at": [ 290, 800 ]
+  }
+ },
+ "dhalsim": {
+  "idle": [
+   250,
+   60
+  ],
+  "portrait": [
+   1300,
+   880
+  ],
+  "Yoga Fire": {
+   "at": [ 450, 530 ]
+  },
+  "Yoga Flame": {
+   "at": [ 1100, 530 ]
+  },
+  "Yoga Teleport": {
+   "at": [ 80, 650 ]
+  }
+ },
+ "balrog": {
+  "idle": [
+   100,
+   60
+  ],
+  "portrait": [
+   410,
+   1150
+  ],
+  "Dash Straight": {
+   "at": [ 190, 650 ]
+  },
+  "Dash Uppercut": {
+   "at": [ 520, 650 ]
+  }
+ },
+ "vega": {
+  "idle": [
+   100,
+   60
+  ],
+  "portrait": [
+   760,
+   1220
+  ],
+  "Rolling Crystal Flash": {
+   "at": [ 350, 680 ]
+  },
+  "Flying Barcelona Attack": {
+   "at": [ 770, 680 ]
+  }
+ },
+ "sagat": {
+  "idle": [
+   60,
+   60
+  ],
+  "portrait": [
+   470,
+   1420
+  ],
+  "Tiger Shot": {
+   "at": [ 120, 880 ],
+   "event": "projectile",
+   "eventFrame": -1
+  },
+  "Tiger Uppercut": {
+   "at": [ 240, 1010 ]
+  },
+  "Tiger Knee": {
+   "at": [ 570, 760 ]
+  }
+ },
+ "bison": {
+  "idle": [
+   100,
+   60
+  ],
+  "portrait": [
+   980,
+   960
+  ],
+  "Psycho Crusher": {
+   "at": [ 370, 800 ]
+  },
+  "Scissor Kick": {
+   "at": [ 960, 800 ]
+  },
+  "Head Press": {
+   "at": [ 730, 500 ]
+  }
+ },
+ "cammy": {
+  "idle": [
+   130,
+   70
+  ],
+  "portrait": [
+   980,
+   1150
+  ],
+  "idlePingpong": true,
+  "Spiral Arrow": {
+   "at": [ 480, 590 ]
+  },
+  "Cannon Spike": {
+   "at": [ 240, 690 ]
+  }
+ },
+ "feilong": {
+  "idle": [
+   290,
+   60
+  ],
+  "portrait": [
+   430,
+   1030
+  ],
+  "Rekkaken": {
+   "at": [ 660, 560 ]
+  },
+  "Shienkyaku": {
+   "at": [ 420, 680 ]
+  }
+ },
+ "deejay": {
+  "idle": [
+   100,
+   70
+  ],
+  "portrait": [
+   440,
+   1520
+  ],
+  "Max Out": {
+   "at": [ 220, 910 ],
+   "event": "projectile",
+   "eventFrame": -1
+  },
+  "Machine Gun Upper": {
+   "at": [ 600, 1030 ],
+   "fps": 14
+  }
+ },
+ "thawk": {
+  "idle": [
+   130,
+   70
+  ],
+  "portrait": [
+   520,
+   1280
+  ],
+  "Tomahawk Buster": {
+   "at": [ 300, 710 ]
+  },
+  "Condor Dive": {
+   "at": [ 770, 710 ]
+  }
+ }
+}

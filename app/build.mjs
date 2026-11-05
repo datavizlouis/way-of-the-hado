@@ -30,7 +30,7 @@ function walk(dir, base = dir) {
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     const p = path.join(dir, e.name);
-    if (e.name.startsWith('.')) return [];
+    if (e.name.startsWith('.') || e.name === 'raw') return []; // raw/ = unsliced source sheets
     return e.isDirectory() ? walk(p, base) : [path.relative(base, p).split(path.sep).join('/')];
   });
 }

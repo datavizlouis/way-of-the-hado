@@ -44,6 +44,13 @@ export default function App() {
       {data.characters.length > 0 && <Characters characters={data.characters} height={H.characters} />}
       {data.characters.length > 0 && <Soundtrack characters={data.characters} height={H.soundtrack} />}
       <Franchise rows={data.metrics} loadedAt={data.loadedAt} />
+      <footer className="credits">
+        <p>
+          A non-commercial fan visualization. Street Fighter and all characters, names and artwork are © Capcom. Character
+          sprites from <em>Super Street Fighter II</em> were ripped by Lord Zymeth (finaldestinationpixelation.com) and shared on
+          The Spriters Resource. Story text, charts and placeholder art by the author.
+        </p>
+      </footer>
     </main>
   );
 }

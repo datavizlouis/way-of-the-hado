@@ -3,11 +3,11 @@
 // Rendered at 1/PIX resolution and upscaled with nearest-neighbour for a pixel-art look.
 
 import * as THREE from 'three';
-import { Fighter } from './fighter.js';
+import { Fighter, SPRITE_SIZE } from './fighter.js';
 import { makeRng, clamp, lerp, easeInOut } from './rng.js';
 
 const PIX = 3;
-const SPACING = 2.05;
+const SPACING = 2.45;
 const SPRITE_W = 2.7;
 
 function canvasTex(w, h, draw, opts = {}) {
@@ -298,8 +298,10 @@ export class FieldScene {
       tex.generateMipmaps = false;
       tex.colorSpace = THREE.SRGBColorSpace;
       const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.5, color: 0x2a3050, fog: false });
-      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(SPRITE_W, SPRITE_W), mat);
-      mesh.position.set(x, SPRITE_W / 2 - 0.08, z);
+      // sheet sprites are drawn at native scale in a bigger canvas: grow the plane to match
+      const planeW = f.size === SPRITE_SIZE ? SPRITE_W : SPRITE_W * (f.size / SPRITE_SIZE) * 0.92;
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(planeW, planeW), mat);
+      mesh.position.set(x, planeW / 2 - (f.size === SPRITE_SIZE ? 0.08 : planeW * 0.012), z);
       mesh.userData.id = c.Id;
       scene.add(mesh);
       const sh = new THREE.Mesh(

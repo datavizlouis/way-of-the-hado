@@ -12,6 +12,7 @@ import { getSpriteConfig, getImage } from '../assets.js';
 import { shade, clamp } from './rng.js';
 
 export const SPRITE_SIZE = 128;
+export const SHEET_SIZE = 200; // canvas for sprite-sheet fighters (native pixel scale)
 const GROUND = 124;
 const S = 1.3; // skeleton scale
 
@@ -151,14 +152,20 @@ export class Fighter {
     this.pal = parsePalette(character.Palette);
     this.build = BUILD[character.Build] || BUILD.medium;
     this.moves = parseMoves(character.Moves);
-    this.canvas = document.createElement('canvas');
-    this.canvas.width = SPRITE_SIZE;
-    this.canvas.height = SPRITE_SIZE;
-    this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
-    this.ctx.imageSmoothingEnabled = false;
     this.onEvent = opts.onEvent || (() => {});
     this.sheet = getSpriteConfig(character.Id);
     this.sheetImg = this.sheet ? getImage(this.sheet.image) : null;
+    if (this.sheetImg && !this.sheetImg.complete) {
+      this.sheetImg.addEventListener('load', () => {
+        this.dirty = true;
+      });
+    }
+    this.size = this.sheet ? SHEET_SIZE : SPRITE_SIZE;
+    this.canvas = document.createElement('canvas');
+    this.canvas.width = this.size;
+    this.canvas.height = this.size;
+    this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
+    this.ctx.imageSmoothingEnabled = false;
     this.setMove(null);
     this.dirty = true;
     this.render();
@@ -187,7 +194,9 @@ export class Fighter {
 
   /** Advance the animation. Returns true if the canvas changed. */
   update(dtMs) {
-    this.t += dtMs;
+    // rAF timestamps can precede a performance.now() taken just before: never step backwards
+    this.t += Math.max(0, dtMs || 0);
+    if (this.sheet && !this.usingSheet) return false; // sheet still decoding
     if (this.usingSheet && this.sheetAnim) {
       const fps = this.sheetAnim.fps || 10;
       const n = this.sheetAnim.frames.length;
@@ -234,15 +243,22 @@ export class Fighter {
   render() {
     this.dirty = false;
     const ctx = this.ctx;
-    ctx.clearRect(0, 0, SPRITE_SIZE, SPRITE_SIZE);
-    if (this.usingSheet && this.sheetAnim) {
+    ctx.clearRect(0, 0, this.size, this.size);
+    if (this.sheet) {
+      if (!this.usingSheet || !this.sheetAnim) {
+        this.dirty = true;
+        return;
+      }
+      // native pixel scale, feet on the ground line, anchored on the fighter's centre line
       const fr = this.sheetAnim.frames[this.frame % this.sheetAnim.frames.length];
-      const [sx, sy, sw, sh, ax] = fr;
-      const scale = Math.min(1, (SPRITE_SIZE - 4) / sh, (SPRITE_SIZE - 4) / sw) * (this.sheet.scale || 1);
+      const [sx, sy, sw, sh, ax, lift = 0] = fr;
+      const scale = this.sheet.scale || 1;
       const dw = sw * scale;
       const dh = sh * scale;
       const anchor = ax != null ? ax * scale : dw / 2;
-      ctx.drawImage(this.sheetImg, sx, sy, sw, sh, Math.round(SPRITE_SIZE * 0.42 - anchor), Math.round(GROUND + 2 - dh), dw, dh);
+      const x = Math.round(this.size * 0.4 - anchor);
+      const y = Math.round(this.size - 2 - dh - lift * scale);
+      ctx.drawImage(this.sheetImg, sx, sy, sw, sh, x, y, dw, dh);
       return;
     }
     drawProcedural(ctx, this.frames[this.frame][0], this.pal, this.build, this.c.Id);
