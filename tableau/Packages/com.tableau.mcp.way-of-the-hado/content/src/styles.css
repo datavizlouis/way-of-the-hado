@@ -213,3 +213,18 @@ button { font: inherit; }
 .select-col .track { flex: 1; min-height: 0; margin: 0; font-size: 14px; }
 .select-col .eq { width: 160px; height: 40px; }
 .select-col .select-grid { margin-top: 0; }
+
+/* portrait spans the now-playing row + spacer + grid; text centred on the equaliser */
+.ost-select { align-items: stretch; }
+.p1-portrait { align-items: stretch; }
+.p1-portrait .select-portrait { height: 100%; width: auto; }
+.select-col { gap: 0; }
+.select-col .now-playing { margin-bottom: 24px; height: 40px; align-items: center; }
+.select-col .now-playing p { line-height: 1; display: flex; align-items: center; height: 40px; }
+.select-col .eq { display: block; }
+/* = now-playing row (40) + spacer (24) + grid (2 x 64 tiles + 6 gap + 16 padding) */
+.ost-select { align-items: flex-end; }
+.p1-portrait { align-items: flex-end; }
+.p1-portrait .select-portrait { height: 214px; }
+/* centre the capital letters (not the line box) on the equaliser's midline */
+.select-col .now-playing p { height: auto; display: block; text-box: trim-both cap alphabetic; }

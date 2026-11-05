@@ -74,7 +74,6 @@ export default function Soundtrack({ characters, height }) {
   const eqRef = useRef(null);
   const [cursor, setCursor] = useState(0);
   const [armed, setArmed] = useState(false); // audio unlocked by a first click / key press
-  const [muted, setMuted] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [volume] = useState(0.6);
   const chip = useMemo(() => new Chiptune(), []);
@@ -114,7 +113,7 @@ export default function Soundtrack({ characters, height }) {
   // across the grid doesn't restart the music on every tile)
   const select = (i, { immediate = false } = {}) => {
     setCursor(i);
-    if (!armed || muted) return;
+    if (!armed) return;
     clearTimeout(timer.current);
     timer.current = setTimeout(() => playFor(i), immediate ? 0 : 220);
   };
@@ -123,19 +122,9 @@ export default function Soundtrack({ characters, height }) {
   const arm = () => {
     if (armed) return;
     setArmed(true);
-    if (!muted) playFor(cursor);
+    playFor(cursor);
   };
 
-  const toggleMute = () => {
-    if (muted) {
-      setMuted(false);
-      setArmed(true);
-      playFor(cursor);
-    } else {
-      setMuted(true);
-      stopAll();
-    }
-  };
 
   useEffect(() => {
     chip.setVolume(volume);
@@ -171,13 +160,17 @@ export default function Soundtrack({ characters, height }) {
           : 0.04;
         lv[i] += (target - lv[i]) * 0.3;
       }
+      // symmetric wave: segments grow up and down from the centre line, so the
+      // equaliser's midpoint stays fixed and lines up with the now-playing text
       ctx.clearRect(0, 0, c.width, c.height);
       const bw = c.width / bars;
+      const mid = c.height / 2;
       for (let i = 0; i < bars; i++) {
-        const segs = Math.round(lv[i] * 8);
+        const segs = Math.max(1, Math.round(lv[i] * 4));
         for (let s = 0; s < segs; s++) {
-          ctx.fillStyle = s > 5 ? '#ff4a4a' : s > 3 ? '#ffd23f' : '#3fe07a';
-          ctx.fillRect(i * bw + 1, c.height - (s + 1) * 5, bw - 2, 4);
+          ctx.fillStyle = s >= 3 ? '#ff4a4a' : s === 2 ? '#ffd23f' : '#3fe07a';
+          ctx.fillRect(i * bw + 1, mid - (s + 1) * 5 + 1, bw - 2, 4);
+          ctx.fillRect(i * bw + 1, mid + s * 5, bw - 2, 4);
         }
       }
     };
@@ -242,12 +235,9 @@ export default function Soundtrack({ characters, height }) {
         </div>
         <div className="select-col">
           <div className="now-playing">
-            <p className="pixel small-pixel dimmed">{playing ? 'Now playing' : armed && !muted ? 'Paused' : 'Sound test'}</p>
+            <p className="pixel small-pixel dimmed">{playing ? 'Now playing' : armed ? 'Paused' : 'Sound test'}</p>
             <p className="pixel track">{playing || armed ? shown?.Theme : 'Click a fighter to start the music'}</p>
             <canvas ref={eqRef} width="160" height="40" className="eq" aria-hidden="true" />
-            <button className="pixel-btn" onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'} aria-pressed={muted}>
-              {muted ? '♪̸' : '♪'}
-            </button>
           </div>
         <div
           className="select-grid"
