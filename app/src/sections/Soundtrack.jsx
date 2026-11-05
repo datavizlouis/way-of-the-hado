@@ -176,8 +176,22 @@ export default function Soundtrack({ characters, height }) {
   };
 
   const shown = sel || preview;
+  const namedPortrait = shown ? assetUrl(`img/select/${shown.Id}.png`) : null;
+  const flag = shown ? assetUrl(`img/flags/${shown.Id}.png`) : null;
+  const bgTile = assetUrl('img/select-bg.png');
   return (
-    <section className="soundtrack" ref={sectionRef} style={{ height }} aria-label="Soundtracks">
+    <section
+      className="soundtrack"
+      ref={sectionRef}
+      style={{
+        height,
+        ...(bgTile && {
+          backgroundImage: `linear-gradient(rgba(4,6,20,0.55), rgba(4,6,20,0.8)), url(${bgTile})`,
+          backgroundSize: 'auto, 512px auto',
+        }),
+      }}
+      aria-label="Soundtracks"
+    >
       <div className="crt" aria-hidden="true" />
       <header className="ost-head">
         <p className="pixel eyebrow-pixel">Sound test</p>
@@ -185,11 +199,20 @@ export default function Soundtrack({ characters, height }) {
       </header>
 
       <div className="ost-stage">
-        <div className="player p1">
+        <div className={`player p1 ${namedPortrait ? 'has-portrait' : ''}`}>
           <div className="player-tag pixel">1P</div>
+          {namedPortrait ? (
+            <img className="select-portrait" src={namedPortrait} alt="" />
+          ) : (
+            <div className="nameplate pixel">{shown?.Name?.toUpperCase()}</div>
+          )}
           <BigFighter character={shown} playing={playing} />
-          <div className="nameplate pixel">{shown?.Name?.toUpperCase()}</div>
-          <div className="pixel small-pixel">{shown?.Country?.toUpperCase()}</div>
+          {flag ? (
+            <img className="flag" src={flag} alt={shown?.Country} />
+          ) : (
+            <div className="pixel small-pixel">{shown?.Country?.toUpperCase()}</div>
+          )}
+          <span className="sr-only">{shown?.Name}</span>
         </div>
 
         <div className="now-playing">

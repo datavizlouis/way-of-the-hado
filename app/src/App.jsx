@@ -48,7 +48,7 @@ export default function App() {
         <p>
           A non-commercial fan visualization. Street Fighter and all characters, names and artwork are © Capcom. Character
           sprites from <em>Super Street Fighter II</em> were ripped by Lord Zymeth (finaldestinationpixelation.com) and shared on
-          The Spriters Resource. Story text, charts and placeholder art by the author.
+          The Spriters Resource. Select-screen portraits ripped by Phatman; select-screen artwork (named portraits, flags and background) captured by GaryCXJK. Story text, charts and placeholder art by the author.
         </p>
       </footer>
     </main>

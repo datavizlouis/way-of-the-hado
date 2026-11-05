@@ -45,4 +45,5 @@ The sheets are Super Street Fighter II rips by Lord Zymeth (finaldestinationpixe
 2. Run `python3 scripts/slice_sprites.py app/assets/sprites/raw <tmp>`. This finds every panel and frame, and writes `<id>.overlay.png` with the panel numbers drawn on, which helps when you edit the mapping.
 3. Edit `scripts/sprite_map.json` if needed. It maps idle, the portrait and each special move (names from `data/characters.csv`) to a point inside the right panel.
 4. Run `python3 scripts/build_atlas.py <tmp>`. This writes `sprites/<id>.png` atlases with the background keyed out, `sprites/sprites.json`, `img/portraits/<id>.png`, and `<tmp>/contact.png` for a visual check.
-5. Run `scripts/build.sh --package` to rebuild the app and the `.twbx`.
+5. Run `python3 scripts/build_ui_assets.py` to cut the select-screen art. It reads `raw/portraits_phatman.png` (portraits ripped by Phatman) and `raw/select_garycxjk.png` (select-screen parts captured by GaryCXJK), and writes `img/portraits/`, `img/select/`, `img/flags/` and `img/select-bg.png`.
+6. Run `scripts/build.sh --package` to rebuild the app and the `.twbx`.

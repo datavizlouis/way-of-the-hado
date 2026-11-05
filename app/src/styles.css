@@ -164,3 +164,12 @@ button { font: inherit; }
 
 .credits { padding: 20px 48px 40px; background: var(--navy); border-top: 1px solid rgba(236,230,214,0.12); }
 .credits p { margin: 0; max-width: 90ch; font: 12px/1.6 var(--ui); color: var(--muted); }
+
+/* select screen with GaryCXJK / Phatman artwork */
+.soundtrack { image-rendering: pixelated; }
+.player { background: linear-gradient(180deg, rgba(10,16,48,0.55), rgba(10,16,48,0.9)); }
+.player.has-portrait { justify-content: flex-start; padding-top: 22px; }
+.select-portrait { height: 330px; width: auto; image-rendering: pixelated; margin-right: 34%; }
+.player.has-portrait .big-fighter { position: absolute; right: 2%; bottom: 28px; }
+.player.has-portrait .big-fighter canvas { width: 300px; height: 300px; }
+.flag { position: absolute; left: 18px; bottom: 14px; height: 44px; width: auto; image-rendering: pixelated; }

@@ -10,3 +10,6 @@ app/assets/audio/
 tableau/Packages/*/content/src/hado-assets.js
 tableau/Packages/*/content/assets/
 __pycache__/
+app/assets/img/select/
+app/assets/img/flags/
+app/assets/img/select-bg.png
