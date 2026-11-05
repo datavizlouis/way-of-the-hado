@@ -19,6 +19,14 @@
   },
   "Tatsumaki Senpukyaku": {
    "at": [ 1150, 550 ]
+  },
+  "beat:punch": {
+   "at": [ 280, 160 ],
+   "fps": 10
+  },
+  "beat:facehit": {
+   "at": [ 290, 790 ],
+   "fps": 8
   }
  },
  "ken": {
@@ -40,6 +48,10 @@
   },
   "Tatsumaki Senpukyaku": {
    "at": [ 1250, 550 ]
+  },
+  "beat:punch": {
+   "at": [ 280, 160 ],
+   "fps": 10
   }
  },
  "chunli": {
@@ -203,6 +215,14 @@
   },
   "Tiger Knee": {
    "at": [ 570, 760 ]
+  },
+  "beat:hit": {
+   "at": [ 300, 1160 ],
+   "fps": 8
+  },
+  "beat:ko": {
+   "at": [ 350, 1300 ],
+   "fps": 8
   }
  },
  "bison": {

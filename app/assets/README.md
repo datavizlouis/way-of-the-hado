@@ -9,7 +9,7 @@ Use only assets you have the rights to use. Street Fighter characters, logos, sp
 | Slot | What it does |
 |---|---|
 | `img/hado-logo.png` | Optional. Replaces the built-in SF4-style "WAY OF THE HADO" logotype (drawn in code from the brush font) with your own artwork. Use a transparent PNG. |
-| `img/story/<chapter>.png` | Optional ink illustration for an intro chapter (1–9). It's blended into the paper at about 22% opacity. Sumi-e style art works best; Higgsfield can generate it. |
+| `img/story/<chapter>.png` | Optional illustration for an intro story beat (1–9). It replaces that beat's animated scene in the art half of the splat. What each beat shows by default is set in `src/lib/storyCast.js`; the scenes live in `src/lib/beatScenes.js`. Beat 6 uses `6.png` for the S.I.N. emblem, made by `scripts/build_story_art.py` from `sprites/raw/sin_emblem.webp` with its red field keyed out. The folder is git-ignored. |
 | `img/portraits/<id>.png` | Portrait for a select-screen tile. Square, ideally 48–64 px. `<id>` is the `Id` column of `data/characters.csv` (`ryu`, `ken`, `chunli`, …). |
 | `fonts/brush.(woff2\|ttf\|otf)` | Brush font for the logo, headings and move buttons. Becomes the `HadoBrush` family. We use Cafe Felix (personal use, git-ignored). Its free build swaps digits and punctuation for a watermark, so `build.mjs` limits it to letters and space through `unicode-range`; other characters fall back to the next font. |
 | `fonts/display.(woff2\|ttf\|otf)` | Display font for the placeholder "HADO" logotype and the KPIs. Becomes `HadoDisplay`. |
@@ -45,5 +45,6 @@ The sheets are Super Street Fighter II rips by Lord Zymeth (finaldestinationpixe
 2. Run `python3 scripts/slice_sprites.py app/assets/sprites/raw <tmp>`. This finds every panel and frame, and writes `<id>.overlay.png` with the panel numbers drawn on, which helps when you edit the mapping.
 3. Edit `scripts/sprite_map.json` if needed. It maps idle, the portrait and each special move (names from `data/characters.csv`) to a point inside the right panel.
 4. Run `python3 scripts/build_atlas.py <tmp>`. This writes `sprites/<id>.png` atlases with the background keyed out, `sprites/sprites.json`, `img/portraits/<id>.png`, and `<tmp>/contact.png` for a visual check.
-5. Run `python3 scripts/build_ui_assets.py` to cut the select-screen art. It reads `raw/portraits_phatman.png` (portraits ripped by Phatman) and `raw/select_garycxjk.png` (select-screen parts captured by GaryCXJK), and writes `img/portraits/`, `img/select/`, `img/flags/<country>.png` (lit) and `<country>-off.png` (grey) for the stage map, and `img/select-bg.png`.
-6. Run `scripts/build.sh --package` to rebuild the app and the `.twbx`.
+5. Akuma isn't in Super SF2. Save Deekman's Akuma sheet as `raw/akuma_deekman.png` and run `python3 scripts/build_akuma.py` after step 4 (step 4 rewrites `sprites.json`). It cuts the Raging Demon win pose for story beat 2.
+6. Run `python3 scripts/build_ui_assets.py` to cut the select-screen art. It reads `raw/portraits_phatman.png` (portraits ripped by Phatman) and `raw/select_garycxjk.png` (select-screen parts captured by GaryCXJK), and writes `img/portraits/`, `img/select/`, `img/flags/<country>.png` (lit) and `<country>-off.png` (grey) for the stage map, and `img/select-bg.png`.
+7. Run `scripts/build.sh --package` to rebuild the app and the `.twbx`.

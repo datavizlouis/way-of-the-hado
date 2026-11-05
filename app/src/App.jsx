@@ -40,7 +40,7 @@ export default function App() {
           Missing datasource(s): {data.missing.join(', ')}. Found: {data.sourceNames.join(', ') || 'none'}.
         </p>
       )}
-      {data.story.length > 0 && <Intro chapters={data.story} height={H.intro} />}
+      {data.story.length > 0 && <Intro chapters={data.story} characters={data.characters} height={H.intro} />}
       {data.characters.length > 0 && <Characters characters={data.characters} height={H.characters} />}
       {data.characters.length > 0 && <Soundtrack characters={data.characters} height={H.soundtrack} />}
       <Franchise rows={data.metrics} loadedAt={data.loadedAt} />
@@ -48,7 +48,7 @@ export default function App() {
         <p>
           A non-commercial fan visualization. Street Fighter and all characters, names and artwork are © Capcom. Character
           sprites from <em>Super Street Fighter II</em> were ripped by Lord Zymeth (finaldestinationpixelation.com) and shared on
-          The Spriters Resource. Select-screen portraits ripped by Phatman; select-screen artwork (named portraits, flags and background) captured by GaryCXJK. Brush font: Cafe Felix by JSHcreates (personal-use licence). World map outlines from Natural Earth (public domain). Story text, charts and placeholder art by the author.
+          The Spriters Resource. Akuma's sprites ripped by Deekman. Select-screen portraits ripped by Phatman; select-screen artwork (named portraits, flags and background) captured by GaryCXJK. Brush font: Cafe Felix by JSHcreates (personal-use licence). World map outlines from Natural Earth (public domain). Story text, charts and placeholder art by the author.
         </p>
       </footer>
     </main>

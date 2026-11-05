@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { makeCoverStrokes, makeEnso, drawSequence, drawStroke } from '../lib/brush.js';
+import { drawSequence, makeSplat, drawSplat as drawInkSplat } from '../lib/brush.js';
+import { STORY_ART } from '../lib/storyCast.js';
+import { drawScene } from '../lib/beatScenes.js';
 import { makeRng, clamp, easeInOut, easeOut } from '../lib/rng.js';
 import { assetUrl, loadImage } from '../assets.js';
 import { useInView } from '../lib/useInView.js';
@@ -41,52 +43,75 @@ function buildLayout(step, chapters, W, H) {
     return { kind: 'title', strokes, cx, cy };
   }
   const ch = chapters[step - 1];
-  const px = narrow ? W * 0.05 : W * 0.36;
-  const pw = narrow ? W * 0.9 : W * 0.56;
-  const py = H * 0.18;
-  const ph = H * 0.62;
-  const strokes = makeCoverStrokes(px, py, pw, ph, 13 + step * 7, { color: PAPER, rows: narrow ? 6 : 5 });
-  const ensoR = Math.min(W * 0.13, H * 0.2);
-  const enso = narrow ? null : makeEnso(W * 0.19, H * 0.47, ensoR, 40 + step, { color: ch?.Accent || '#c4283c' });
-  return { kind: 'chapter', strokes, px, py, pw, ph, enso, ensoR, narrow, ch };
+  // the beat's box: art on one side, text on the other, swapping sides every beat
+  // on a phone, keep clear of the chapter dots down the right edge
+  const bw = narrow ? W - 84 : Math.min(W * 0.7, 1060);
+  const bh = narrow ? Math.min(H * 0.72, 760) : Math.min(H * 0.5, 520);
+  const bx = narrow ? 16 : (W - bw) / 2;
+  const by = H * 0.48 - bh / 2;
+  const artLeft = step % 2 === 1;
+  const artW = narrow ? bw : bw * 0.4;
+  const gap = narrow ? 0 : bw * 0.06;
+  const art = narrow
+    ? { x: bx, y: by, w: bw, h: bh * 0.42 }
+    : { x: artLeft ? bx : bx + bw - artW, y: by, w: artW, h: bh };
+  const text = narrow
+    ? { x: bx, y: by + bh * 0.46, w: bw, h: bh * 0.54 }
+    : { x: artLeft ? bx + artW + gap : bx, y: by, w: bw - artW - gap, h: bh };
+  // white splatter, wider and taller than the box: a row of overlapping blots plus a big one
+  // in the middle so the box is covered edge to edge
+  const rng = makeRng(500 + step * 17);
+  const splats = [];
+  const n = narrow ? 3 : 4;
+  for (let i = 0; i < n; i++) {
+    const u = n === 1 ? 0.5 : i / (n - 1);
+    splats.push(
+      makeSplat(bx + bw * (0.12 + u * 0.76), by + bh * (0.5 + (rng() - 0.5) * 0.16), bh * (0.44 + rng() * 0.06), 900 + step * 31 + i, {
+        color: PAPER, sx: 1.2 + rng() * 0.15, sy: 1.15 + rng() * 0.1, rot: (rng() - 0.5) * 0.8, spikeLen: 0.35, spread: 0.4, beads: 0.4,
+      }),
+    );
+  }
+  splats.splice(1, 0, makeSplat(bx + bw / 2, by + bh / 2, bh * 0.6, 77 + step, {
+    color: PAPER, sx: (bw / bh) * 0.72, sy: 1.05, rot: (rng() - 0.5) * 0.1, spikeLen: 0.35, spread: 0.4, beads: 0.4,
+  }));
+  return { kind: 'chapter', strokes: [], splats, art, text, artLeft, narrow, ch, step };
 }
 
-function drawContent(ctx, L, W, H, logoImg, storyImg) {
+function drawContent(ctx, L, W, H, a, slide) {
   if (L.kind === 'title') return;
   const ch = L.ch;
-  if (!ch) return;
-  const pad = Math.max(24, L.pw * 0.07);
-  const x = L.px + pad;
-  let y = L.py + pad * 1.1;
-  const maxW = L.pw - pad * 2;
+  if (!ch || a <= 0) return;
+  const T = L.text;
   ctx.save();
-  ctx.globalCompositeOperation = 'source-atop';
-  // optional illustration, multiplied into the paper like ink
-  if (storyImg) {
-    const ih = L.ph * 0.9;
-    const iw = (storyImg.naturalWidth / storyImg.naturalHeight) * ih;
-    ctx.globalAlpha = 0.22;
-    ctx.drawImage(storyImg, L.px + L.pw - iw, L.py + L.ph * 0.05, iw, ih);
-    ctx.globalAlpha = 1;
-  }
+  ctx.globalAlpha = a;
+  // the text drifts in from the side away from the art
+  ctx.translate((L.artLeft ? 1 : -1) * slide, 0);
   ctx.textBaseline = 'top';
+  // size the type to the box, then centre the block vertically
+  const kfs = clamp(W * 0.013, 12, 16);
+  const tfs = clamp(T.w * 0.085, 28, 66);
+  const bfs = clamp(W * 0.0145, 14, 19);
+  ctx.font = `${tfs}px ${BRUSH_FONT}`;
+  const titleLines = wrap(ctx, ch.Title, T.w);
+  ctx.font = `${bfs}px ${BODY_FONT}`;
+  const bodyLines = wrap(ctx, ch.Body, T.w);
+  const blockH = kfs * 2 + titleLines.length * tfs * 1.05 + tfs * 0.3 + bodyLines.length * bfs * 1.55;
+  let y = T.y + Math.max(0, (T.h - blockH) / 2);
+  const x = T.x;
   ctx.fillStyle = ch.Accent && ch.Accent !== '#e8e2d0' ? ch.Accent : '#c4283c';
-  const kfs = clamp(W * 0.014, 12, 17);
   ctx.font = `700 ${kfs}px ${BODY_FONT}`;
-  ctx.fillText(`${String(ch.Era).toUpperCase()}   ·   ${ch.Kicker}`, x, y);
+  ctx.fillText(`${KANJI[L.step] || ''}  CHAPTER ${L.step}  ·  ${String(ch.Era).toUpperCase()}`, x, y);
   y += kfs * 2;
   ctx.fillStyle = INK;
-  const tfs = clamp(W * 0.05, 30, 74);
   ctx.font = `${tfs}px ${BRUSH_FONT}`;
-  for (const line of wrap(ctx, ch.Title, maxW)) {
+  for (const line of titleLines) {
     ctx.fillText(line, x, y);
-    y += tfs * 1.08;
+    y += tfs * 1.05;
   }
-  y += tfs * 0.25;
-  const bfs = clamp(W * 0.0155, 15, 21);
+  y += tfs * 0.3;
   ctx.font = `${bfs}px ${BODY_FONT}`;
   ctx.fillStyle = '#232a3d';
-  for (const line of wrap(ctx, ch.Body, Math.min(maxW, 640))) {
+  for (const line of bodyLines) {
     ctx.fillText(line, x, y);
     y += bfs * 1.55;
   }
@@ -181,22 +206,37 @@ function drawTitleLogo(ctx, L, W, H, logoImg, a, dpr, reverse, now) {
   ctx.restore();
 }
 
-function drawChapterInk(ctx, L, W, H, p, reverse) {
-  if (!L.enso) return;
-  drawStroke(ctx, L.enso, p, { reverse });
-  const a = reverse ? p : clamp((p - 0.4) / 0.6, 0, 1);
+// The beat's art: a supplied picture, an animated scene, or (Akuma's beat) a kanji in
+// the red Satsui no Hado. `t` is seconds since the beat finished painting in.
+function drawChapterArt(ctx, L, W, H, a, slide, t, now, storyImg) {
   if (a <= 0) return;
+  const A = L.art;
+  const spec = STORY_ART[L.step] || {};
   ctx.save();
   ctx.globalAlpha = a;
-  ctx.fillStyle = PAPER;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  const step = Number(L.ch?.Chapter) || 0;
-  ctx.font = `${L.ensoR * 1.05}px "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif CJK JP", serif`;
-  ctx.fillText(KANJI[step] || String(step), W * 0.19, H * 0.47);
-  ctx.font = `600 ${clamp(W * 0.012, 11, 14)}px ${BODY_FONT}`;
-  ctx.globalAlpha = a * 0.7;
-  ctx.fillText(`CHAPTER ${step}`, W * 0.19, H * 0.47 + L.ensoR * 1.35);
+  ctx.translate((L.artLeft ? -1 : 1) * slide, 0);
+  if (storyImg) {
+    // a supplied picture, with a gentle float
+    const sc = Math.min(A.w / storyImg.naturalWidth, A.h / storyImg.naturalHeight) * 0.92;
+    const iw = storyImg.naturalWidth * sc;
+    const ih = storyImg.naturalHeight * sc;
+    const fy = Math.sin(now / 900) * 4;
+    ctx.drawImage(storyImg, A.x + (A.w - iw) / 2, A.y + (A.h - ih) / 2 + fy, iw, ih);
+  } else if (spec.scene && drawScene(spec.scene, ctx, A, Math.max(0, t), { L })) {
+    // drawn
+  } else if (spec.kanji) {
+    const cx = A.x + A.w / 2;
+    const cy = A.y + A.h / 2;
+    const fs = Math.min(A.w, A.h) * 0.7;
+    if (!L.aura) L.aura = makeAura(cx, cy - fs * 0.05, fs * 0.9, 41);
+    drawAura(ctx, L.aura, now, a, 'back');
+    ctx.fillStyle = INK;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `${fs}px "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif CJK JP", serif`;
+    ctx.fillText(spec.kanji, cx, cy);
+    drawAura(ctx, L.aura, now, a, 'front');
+  }
   ctx.restore();
 }
 
@@ -234,13 +274,13 @@ function drawSky(ctx, W, H, t, stars, flash) {
 
 // ------------------------------------------------------------------ component
 
-export default function Intro({ chapters, height }) {
+export default function Intro({ chapters, characters = [], height }) {
   const wrapRef = useRef(null);
   const skyRef = useRef(null);
   const paintRef = useRef(null);
   const [step, setStep] = useState(0);
   const total = chapters.length + 1;
-  const anim = useRef({ shown: 0, target: 0, phase: 'paint', start: performance.now(), layouts: new Map() });
+  const anim = useRef({ shown: 0, target: 0, phase: 'paint', start: performance.now(), paintedAt: performance.now(), layouts: new Map() });
   const imgs = useRef({ logo: null, story: {} });
   const inView = useInView(wrapRef, 0.05);
 
@@ -386,6 +426,7 @@ export default function Intro({ chapters, height }) {
           s.shown = s.target;
           s.phase = 'paint';
           s.start = now;
+          s.paintedAt = now; // scenes start their choreography from here
           p = 0;
           reverse = false;
         }
@@ -397,13 +438,17 @@ export default function Intro({ chapters, height }) {
       const L = layoutFor(s.shown);
       pctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       pctx.clearRect(0, 0, W, H);
-      drawSequence(pctx, L.strokes, p, { reverse, overlap: 0.45 });
-      drawContent(pctx, L, W, H, imgs.current.logo, imgs.current.story[L.ch?.Chapter]);
-      pctx.globalCompositeOperation = 'source-over';
       if (L.kind === 'title') {
         drawTitleLogo(pctx, L, W, H, imgs.current.logo, reverse ? p : (p - 0.35) / 0.65, dpr, reverse, now);
       } else {
-        drawChapterInk(pctx, L, W, H, p, reverse);
+        // white splatter lands first (staggered), then the art and text slide in on top
+        const sp = reverse ? p : clamp(p * 1.5, 0, 1);
+        L.splats.forEach((sp1, i) => drawInkSplat(pctx, sp1, clamp(sp * 1.25 - i * 0.06, 0, 1)));
+        const ca = reverse ? clamp(p * 1.6 - 0.3, 0, 1) : clamp((p - 0.4) / 0.6, 0, 1);
+        const slide = (1 - easeOut(ca)) * 40;
+        const sceneT = (now - s.paintedAt) / 1000 - 0.5;
+        drawChapterArt(pctx, L, W, H, ca, slide, sceneT, now, imgs.current.story[L.ch?.Chapter]);
+        drawContent(pctx, L, W, H, ca, slide);
       }
     };
     raf = requestAnimationFrame(frame);
