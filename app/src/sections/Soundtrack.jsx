@@ -34,35 +34,6 @@ function Portrait({ character }) {
   return <span className="portrait" ref={ref} aria-hidden="true" />;
 }
 
-function BigFighter({ character, playing }) {
-  const ref = useRef(null);
-  useEffect(() => {
-    if (!character) return undefined;
-    const f = new Fighter(character);
-    const el = ref.current;
-    el.textContent = '';
-    el.appendChild(f.canvas);
-    let raf;
-    let last = performance.now();
-    let beat = 0;
-    const loop = (now) => {
-      raf = requestAnimationFrame(loop);
-      const dt = now - last;
-      last = now;
-      f.update(dt * (playing ? 1.3 : 1));
-      beat += dt;
-      // pose to the music now and then
-      if (playing && beat > 4200 && !f.moveName && f.moves.length) {
-        beat = 0;
-        f.setMove(f.moves[Math.floor(Math.random() * f.moves.length)].name);
-      }
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [character, playing]);
-  return <div className="big-fighter" ref={ref} aria-hidden="true" />;
-}
-
 function StageMap({ character }) {
   const ref = useRef(null);
   const flags = useMemo(() => {
@@ -232,8 +203,6 @@ export default function Soundtrack({ characters, height }) {
   };
 
   const namedPortrait = shown ? assetUrl(`img/select/${shown.Id}.png`) : null;
-  const stage = shown ? STAGES[shown.Id] : null;
-  const flag = stage ? assetUrl(`img/flags/${stage.country}.png`) : null;
   const bgTile = assetUrl('img/select-bg.png');
   return (
     <section
@@ -255,87 +224,70 @@ export default function Soundtrack({ characters, height }) {
         <h2 className="pixel ost-title">Player select</h2>
       </header>
 
-      <div className="ost-stage">
-        <div className={`player p1 ${namedPortrait ? 'has-portrait' : ''}`}>
-          <div className="player-tag pixel">1P</div>
+      <div className="ost-map">
+        <StageMap character={shown} />
+        <div className="now-playing">
+          <p className="pixel small-pixel dimmed">{playing ? 'Now playing' : armed && !muted ? 'Paused' : 'Sound test'}</p>
+          <p className="pixel track">{playing || armed ? shown?.Theme : 'Click a fighter to start the music'}</p>
+          <canvas ref={eqRef} width="160" height="40" className="eq" aria-hidden="true" />
+          <button className="pixel-btn" onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'} aria-pressed={muted}>
+            {muted ? '♪̸' : '♪'}
+          </button>
+          <label className="vol pixel small-pixel">
+            VOL
+            <input type="range" min="0" max="1" step="0.05" value={volume} onChange={(e) => setVolume(Number(e.target.value))} />
+          </label>
+        </div>
+      </div>
+
+      <div className="ost-select">
+        <div className="p1-portrait">
+          <span className="player-tag pixel">1P</span>
           {namedPortrait ? (
             <img className="select-portrait" src={namedPortrait} alt="" />
           ) : (
             <div className="nameplate pixel">{shown?.Name?.toUpperCase()}</div>
           )}
-          <BigFighter character={shown} playing={playing} />
-          {flag ? (
-            <img className="flag" src={flag} alt={shown?.Country} />
-          ) : (
-            <div className="pixel small-pixel">{shown?.Country?.toUpperCase()}</div>
-          )}
-          <span className="sr-only">{shown?.Name}</span>
+          <span className="sr-only">
+            {shown?.Name}, {shown?.Country}
+          </span>
         </div>
-
-        <div className="map-col">
-          <StageMap character={shown} />
-          <div className="now-playing">
-            <div className="np-text">
-              <p className="pixel small-pixel dimmed">{playing ? 'Now playing' : armed && !muted ? 'Paused' : 'Sound test'}</p>
-              <p className="pixel track">
-                {playing || armed ? shown?.Theme : 'Click a fighter to start the music'}
-              </p>
-            </div>
-            <canvas ref={eqRef} width="160" height="40" className="eq" aria-hidden="true" />
-            <div className="transport">
-              <button className="pixel-btn" onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'} aria-pressed={muted}>
-                {muted ? '♪̸' : '♪'}
-              </button>
-              <label className="vol pixel small-pixel">
-                VOL
-                <input type="range" min="0" max="1" step="0.05" value={volume} onChange={(e) => setVolume(Number(e.target.value))} />
-              </label>
-            </div>
-          </div>
-          <p className="ost-note">
-            {fileUrl
-              ? 'Hover or use the arrow keys to switch fighters; their theme follows.'
-              : `Hover or use the arrow keys to switch fighters. Placeholder chiptune: add assets/audio/${shown?.Id}.mp3 for the real theme.`}
-          </p>
-        </div>
-
-        <div className="player p2" aria-hidden="true">
-          <div className="player-tag pixel p2-tag">2P</div>
-          <div className="empty-slot" />
-          <div className="nameplate pixel blink">PRESS START</div>
+        <div
+          className="select-grid"
+          role="listbox"
+          aria-label="Fighters"
+          tabIndex={0}
+          aria-activedescendant={`ost-${shown?.Id}`}
+          onKeyDown={onKey}
+          style={{ '--cols': COLS }}
+        >
+          {characters.map((c, i) => (
+            <button
+              key={c.Id}
+              id={`ost-${c.Id}`}
+              role="option"
+              aria-selected={cursor === i}
+              className={`tile ${cursor === i ? 'cursor' : ''}`}
+              onMouseEnter={() => select(i)}
+              onFocus={() => select(i)}
+              onClick={() => {
+                if (!armed) arm();
+                select(i, { immediate: true });
+              }}
+              title={c.Name}
+            >
+              <Portrait character={c} />
+              {cursor === i && <span className="cursor-tag pixel">1P</span>}
+              <span className="sr-only">{c.Name}</span>
+            </button>
+          ))}
         </div>
       </div>
-
-      <div
-        className="select-grid"
-        role="listbox"
-        aria-label="Fighters"
-        tabIndex={0}
-        aria-activedescendant={`ost-${shown?.Id}`}
-        onKeyDown={onKey}
-        style={{ '--cols': COLS }}
-      >
-        {characters.map((c, i) => (
-          <button
-            key={c.Id}
-            id={`ost-${c.Id}`}
-            role="option"
-            aria-selected={cursor === i}
-            className={`tile ${cursor === i ? 'cursor' : ''}`}
-            onMouseEnter={() => select(i)}
-            onFocus={() => select(i)}
-            onClick={() => {
-              if (!armed) arm();
-              select(i, { immediate: true });
-            }}
-            title={c.Name}
-          >
-            <Portrait character={c} />
-            {cursor === i && <span className="cursor-tag pixel">1P</span>}
-            <span className="sr-only">{c.Name}</span>
-          </button>
-        ))}
-      </div>
+      <p className="ost-note">
+        {fileUrl
+          ? 'Hover or use the arrow keys to switch fighters; their theme follows.'
+          : `Hover or use the arrow keys to switch fighters. Placeholder chiptune: add assets/audio/${shown?.Id}.mp3 for the real theme.`}
+      </p>
     </section>
   );
 }
