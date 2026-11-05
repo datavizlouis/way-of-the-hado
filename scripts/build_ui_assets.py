@@ -9,7 +9,7 @@
 Writes (all under app/assets/img/):
   portraits/<id>.png   select-grid tile (Phatman, default palette)
   select/<id>.png      named portrait for the big 1P picture (GaryCXJK)
-  flags/<id>.png       the fighter's stage flag with its label (GaryCXJK)
+  flags/<country>.png  stage flag + label, lit (selected) and <country>-off.png greyed (GaryCXJK)
   select-bg.png        tiling "SUPER" globe background (GaryCXJK)
 """
 import sys
@@ -35,10 +35,6 @@ GARY_ROWS = [
 ]
 FLAG_ORDER = ['japan', 'brazil', 'usa', 'china', 'ussr', 'india', 'thailand', 'spain', 'mexico',
               'hongkong', 'jamaica', 'england']
-STAGE = {'ryu': 'japan', 'honda': 'japan', 'blanka': 'brazil', 'guile': 'usa', 'ken': 'usa',
-         'chunli': 'china', 'zangief': 'ussr', 'dhalsim': 'india', 'thawk': 'mexico',
-         'feilong': 'hongkong', 'deejay': 'jamaica', 'cammy': 'england', 'balrog': 'usa',
-         'vega': 'spain', 'sagat': 'thailand', 'bison': 'thailand'}
 
 
 def key_border_bg(rgba, bg):
@@ -88,25 +84,23 @@ def gary():
     rows = {}
     for b in icons:
         rows.setdefault((b[1] + 2) // 6, []).append(b)  # icons in a row can sit 1px apart
-    best, best_sat = None, -1
-    for y, r in rows.items():
-        if len(r) != len(FLAG_ORDER):
-            continue
+    # two rows of the same 12 flags: the colourful row = selected stage, the grey row = the rest
+    full = [sorted(r, key=lambda b: b[0]) for r in rows.values() if len(r) == len(FLAG_ORDER)]
+
+    def saturation(r):
         px = np.concatenate([a[b[1]:b[3], b[0]:b[2], :3].reshape(-1, 3) for b in r]).astype(int)
-        sat = float((px.max(axis=1) - px.min(axis=1)).mean())
-        if sat > best_sat:
-            best, best_sat = sorted(r, key=lambda b: b[0]), sat
-    flags = {}
-    for fid, (x0, y0, x1, y1, _) in zip(FLAG_ORDER, best):
-        # its label is the small text block directly below (or above) the icon
-        labels = [b for b in boxes if b[4] > 60 and (b[3] - b[1]) <= 9 and b[0] < x1 + 6 and b[2] > x0 - 6
-                  and (0 <= b[1] - y1 <= 3 or 0 <= y0 - b[3] <= 3)]
-        lb = min(labels, key=lambda b: abs((b[0] + b[2]) - (x0 + x1))) if labels else None
-        cx0, cy0 = min(x0, lb[0]) if lb else x0, min(y0, lb[1]) if lb else y0
-        cx1, cy1 = max(x1, lb[2]) if lb else x1, max(y1, lb[3]) if lb else y1
-        flags[fid] = key_border_bg(a[cy0:cy1, cx0:cx1].copy(), bg)
-    for sid, fid in STAGE.items():
-        save(flags[fid], IMG / 'flags' / f'{sid}.png')
+        return float((px.max(axis=1) - px.min(axis=1)).mean())
+
+    full.sort(key=saturation, reverse=True)
+    for suffix, row in zip(('', '-off'), full):
+        for fid, (x0, y0, x1, y1, _) in zip(FLAG_ORDER, row):
+            # its label is the small text block centred directly below (or above) the icon
+            labels = [b for b in boxes if b[4] > 60 and (b[3] - b[1]) <= 9 and b[0] < x1 + 6 and b[2] > x0 - 6
+                      and (0 <= b[1] - y1 <= 3 or 0 <= y0 - b[3] <= 3)]
+            lb = min(labels, key=lambda b: abs((b[0] + b[2]) - (x0 + x1))) if labels else None
+            cx0, cy0 = (min(x0, lb[0]), min(y0, lb[1])) if lb else (x0, y0)
+            cx1, cy1 = (max(x1, lb[2]), max(y1, lb[3])) if lb else (x1, y1)
+            save(key_border_bg(a[cy0:cy1, cx0:cx1].copy(), bg), IMG / 'flags' / f'{fid}{suffix}.png')
 
     # background tile (first big panel on the sheet)
     tile = max((b for b in boxes if b[1] < 20), key=lambda b: b[4])
