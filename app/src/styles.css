@@ -134,35 +134,61 @@ button { font: inherit; }
 
 /* ------------------------------------------------------------ franchise */
 .franchise { padding: 32px 48px; background: var(--navy); display: flex; flex-direction: column; justify-content: center; }
-.franchise .panel { margin-bottom: 0; }
 .sources-screen { justify-content: flex-start; overflow-y: auto; padding: 0; }
 .sources-screen .sources { border-top: 0; padding: 32px 48px 16px; }
-.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin: 12px 0 40px; }
-.kpi { border-top: 3px solid var(--red-hot); padding: 14px 4px 0; display: flex; flex-direction: column; }
-.kpi-v { font: 400 52px/1 var(--display); color: var(--paper); letter-spacing: 0.01em; }
-.kpi-l { font: 15px var(--body); color: var(--paper); margin-top: 6px; }
-.kpi-s { font: 12px var(--ui); color: var(--muted); margin-top: 2px; }
-.panel { margin-bottom: 44px; }
-.panel h3 { margin: 0 0 4px; font: 600 20px/1.3 var(--body); color: var(--paper); max-width: 70ch; }
-.panel .sub { margin: 0 0 14px; font: 13px var(--ui); color: var(--muted); }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; }
-@media (max-width: 980px) { .grid2 { grid-template-columns: 1fr; gap: 0; } }
-.chart { position: relative; }
-.chart svg, .panel svg { display: block; overflow: visible; }
-.axis { font: 12px var(--ui); fill: var(--muted); }
-.direct { font: 600 13px var(--ui); fill: #b9c0d8; }
-.direct.sf { fill: var(--red-hot); font-size: 15px; }
-.direct .val { font-weight: 400; fill-opacity: 0.85; }
-.bar-label { font: 13px var(--ui); fill: #c6cbe0; }
-.bar-label.sf { fill: #fff; font-weight: 700; }
-.bar-val { font: 600 12px var(--ui); fill: var(--muted); }
-.bar-val.sf { fill: var(--red-hot); }
-.callout { border-left: 3px solid var(--gold); padding-left: 20px; align-self: start; }
-.callout p { font: 16px/1.6 var(--body); color: #cfd4e6; }
-.tip { position: absolute; transform: translate(-50%, -100%); background: #0b1022f2; border: 1px solid #3a4470; padding: 8px 10px; pointer-events: none; z-index: 10; min-width: 180px; max-width: 320px; font: 12px/1.4 var(--ui); display: flex; flex-direction: column; gap: 2px; }
-.tip strong { color: var(--paper); }
-.tip span { color: var(--red-hot); font-weight: 700; }
-.tip em { color: var(--muted); font-style: normal; font-size: 11px; }
+/* scroll pages: a sticky graphic with full-screen steps scrolling over it (Franchise.jsx) */
+.fx-page { position: relative; overflow: clip; background: var(--navy); } /* clip, not hidden: hidden makes a scroll box, which breaks the sticky stage and the snap points */
+.fx-stage { position: sticky; top: 0; height: 100vh; box-sizing: border-box; padding: 11vh 5vw 9vh calc(38% + 3vw); }
+.fx-chart { position: relative; width: 100%; height: 100%; }
+.fx-steps { position: relative; margin-top: -100vh; pointer-events: none; }
+.fx-step { display: flex; align-items: center; box-sizing: border-box; padding: 0 0 0 48px; }
+.fx-card { pointer-events: auto; width: 35%; max-width: 600px; opacity: 0.2; transition: opacity 0.4s; }
+.fx-step.on .fx-card { opacity: 1; }
+.fx-card .brush-title { font-size: clamp(36px, 4.2vw, 64px); }
+.fx-card .brush-title.fx-oneline { white-space: nowrap; font-size: clamp(26px, 2.55vw, 46px); }
+.fx-body { margin: 14px 0 0; font: 16.5px/1.6 var(--body); color: #cfd4e6; }
+.fx-hint { margin: 18px 0 0; font: 700 11px var(--ui); letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); }
+.fx-quote { color: var(--paper); font-style: italic; }
+.fx-cell { position: absolute; left: 0; top: 0; box-sizing: border-box; z-index: 1; }
+.fx-block { position: absolute; inset: 0; overflow: hidden; transition: transform 0.18s ease-out, box-shadow 0.18s, background-color 0.4s; }
+.fx-block.lifted { transform: translateY(-6px); box-shadow: 0 6px 0 rgba(0,0,0,0.5); }
+.fx-fade { position: absolute; pointer-events: none; z-index: 2; }
+/* tooltip: big value, then what it is, then a blank line and the plain-words note */
+.fx-tip { position: fixed; z-index: 50; pointer-events: none; width: 320px; box-sizing: border-box; background: #0b1022f5; border: 1px solid #3a4470; box-shadow: 4px 4px 0 #000; padding: 12px 14px 14px; }
+.fx-tip-v { font: 26px/1.1 var(--pixel); color: #ffd23f; text-shadow: 2px 2px 0 #c4283c; }
+.fx-tip-e { margin-top: 6px; font: 700 11px/1.3 var(--ui); letter-spacing: 0.14em; text-transform: uppercase; color: #8fd0ff; }
+.fx-tip p { margin: 12px 0 0; font: 13px/1.5 var(--body); color: #cfd4e6; }
+/* life bars, after the Super SF2 Turbo HUD: nameplate, framed bar as long as its value, score */
+.hp-row { display: contents; }
+.hp-name { position: absolute; font-size: 13px; color: #c9cdd8; text-shadow: 2px 2px 0 #10183a; white-space: nowrap; transition: color 0.3s; }
+.hp-row.lit .hp-name { color: #ffd23f; }
+.hp-track { position: absolute; box-sizing: border-box; border: 3px solid #f4f4f4; outline: 2px solid #10183a; background: #10183a; transition: width 0.8s cubic-bezier(.3,.7,.2,1); }
+.hp-track.none { display: inline-flex; align-items: center; padding: 0 14px; background: repeating-linear-gradient(135deg, #2a3150 0 6px, #222842 6px 12px); }
+.hp-track.none span { font-size: 10px; color: #8890b8; white-space: nowrap; }
+.hp-score { position: absolute; transform: translateY(-50%); font-size: 18px; color: #c9cdd8; text-shadow: 2px 2px 0 #10183a; white-space: nowrap; transition: color 0.3s, left 0.8s cubic-bezier(.3,.7,.2,1); }
+.hp-row.lit .hp-score { color: #ffd23f; text-shadow: 2px 2px 0 #c4283c; }
+.hp-seg.other { background-image: repeating-linear-gradient(135deg, rgba(0,0,0,0.3) 0 3px, transparent 3px 7px); }
+.hp-after { border: 2px dashed #c9cdd8; background: rgba(16,24,58,0.85); }
+.hp-after.lit { border-color: #f8d038; }
+.hp-seg-label { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); max-width: calc(100% - 10px); font: 700 10px var(--ui); color: #20242f; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hp-after .hp-seg-label { color: #c9cdd8; }
+.hp-after.lit .hp-seg-label { color: #f8d038; }
+/* treemaps */
+.tm-cell.other { background-image: repeating-linear-gradient(135deg, rgba(0,0,0,0.16) 0 4px, transparent 4px 9px); }
+.tm-label { position: absolute; left: 8px; top: 6px; right: 6px; font: 600 12px/1.25 var(--ui); color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
+.tm-label b { display: block; margin-top: 3px; font: 400 15px var(--pixel); }
+.tm-cell.gold .tm-label { color: #2a1a00; text-shadow: none; }
+.tm-group { font: 700 11px/16px var(--ui); letter-spacing: 0.08em; text-transform: uppercase; color: #cfd4e6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tm-group.hot { color: #ff6a5a; }
+.sf2-ring { box-sizing: border-box; border: 3px solid #e2403f; z-index: 4; animation: sf2-pulse 1.6s ease-in-out infinite; }
+@keyframes sf2-pulse { 0%, 100% { box-shadow: 0 0 6px 1px rgba(226,64,63,0.55), inset 0 0 6px rgba(226,64,63,0.35); } 50% { box-shadow: 0 0 22px 6px rgba(255,80,70,0.85), inset 0 0 12px rgba(255,80,70,0.5); } }
+/* butterfly: games sold to the left of the names, box office to the right */
+.bf-name { transform: translateY(-50%); text-align: center; font: 600 14px/1.2 var(--ui); color: var(--paper); }
+.bf-name.sf { color: #ffd23f; }
+.bf-val { transform: translateY(-50%); font: 15px var(--pixel); color: var(--paper); white-space: nowrap; }
+.bf-val.none { font: 700 11px var(--ui); letter-spacing: 0.12em; text-transform: uppercase; color: #8890b8; }
+.bf-val small { margin-left: 8px; font: 11px var(--ui); color: var(--muted); }
+.pair-head { font: 700 11px var(--ui); letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); white-space: nowrap; }
 .sources { border-top: 1px solid rgba(236,230,214,0.15); padding-top: 20px; font: 12px/1.6 var(--ui); color: var(--muted); }
 .sources ul { columns: 2; column-gap: 32px; padding-left: 16px; }
 .sources .url { opacity: 0.6; word-break: break-all; }
@@ -251,6 +277,9 @@ button { font: inherit; }
 .p1-portrait { flex: none; width: 142px; height: 214px; justify-content: flex-end; }
 .q-portrait { width: 100%; height: 214px; display: grid; place-items: center; font-size: 150px; line-height: 1; color: #ffd23f; text-shadow: 6px 6px 0 #c4283c, 12px 12px 0 #1a0a20; }
 .select-col { flex: none; }
+/* the now-playing text never sets the row's width: the grid does, so the "?" portrait doesn't move when the text changes */
+.select-col .now-playing { width: 0; min-width: 100%; box-sizing: border-box; }
+.select-col .now-playing .track { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* select screen: centred in its one screen, the map takes whatever height is spare */
 .soundtrack { display: flex; flex-direction: column; align-items: center; justify-content: center; }

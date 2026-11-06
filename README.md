@@ -4,8 +4,8 @@ A one-screen-at-a-time Tableau **data app**: a React and Three.js viz extension 
 
 1. **Intro.** A navy sky. The title card is an SF4-style logo on a black ink splat. Each scroll step pulls back the current story beat and splashes in the next on a white ink splat: the beat's fighters (animated sprites) on one side and the text on the other, alternating sides, from Ryu and Ken's origins to the Black Moons of Street Fighter V.
 2. **Meet the Street Fighters.** A pixelated 3D field under a storm sky, with lightning. The 16 Super Street Fighter II fighters stand in two zig-zag rows of eight, none overlapping, dark until hovered. Clicking one zooms in to a bio on a cream ink splat, with red brush buttons that play each special move: travelling moves cross the field, and each projectile flies left to right in its own art from the sprite sheets.
-3. **Soundtracks.** A player-1 select screen in the Super SF2 style. A 2x2 "?" tile beside Ryu holds the opening theme and is selected by default. The selected track keeps looping across the whole site. A pixel world map lights up the selected fighter's stage. The named portrait sits beside the selector grid, with a now-playing strip and equaliser above it. Hovering browses fighters; clicking one switches the music.
-4. **The franchise in numbers.** Sales, box office and arcade figures compared with other fighting-game franchises, with every row sourced.
+3. **Soundtracks.** A player-1 select screen in the Super SF2 style. A 2x2 "?" tile beside Ryu holds the opening theme and is selected by default. The selected track keeps looping across the whole site. A pixel world map lights up the selected fighter's stage. The named portrait sits beside the selector grid, with a now-playing line above it. Hovering browses fighters; clicking one switches the music.
+4. **The franchise in numbers.** Two scroll pages, with a sticky chart that animates as each step snaps in. Page 1, units sold: 11 franchises as Super SF2-style life bars, one bar each with Street Fighter lit, then split into the games each publisher reports by name (hover lights a franchise and lifts the game). Franchises with no published figure say so. Page 2: Street Fighter's games as a treemap with Street Fighter II's four versions ringed in red, every film as a treemap, then a butterfly chart of games sold against box office. Tooltips give the value, what it is, and a plain-words note on where it came from. Every number traces to a publisher, Nintendo IR, Box Office Mojo or The Numbers. No publisher reports lifetime revenue per franchise, so there are no revenue charts. A sources screen follows; Page 3 (credits) is still to come.
 
 ## Progress
 
@@ -16,7 +16,8 @@ A one-screen-at-a-time Tableau **data app**: a React and Three.js viz extension 
 | Logo: white "WAY OF THE" over a big SF4-style HADO (yellow-orange-red fill, black brush border) on a black ink splat, with an animated red energy dot in the A | ✅ Done, using the Cafe Felix brush font |
 | Fighters: 3D field, lightning, hover tint, zoom-in bio, move buttons | ✅ Done, using Super SF2 sprite sheets |
 | Soundtracks: select screen, stage map, portraits, flags, auto-play | ✅ Done. The music is placeholder chiptunes. |
-| Franchise data and charts | ✅ Done. **Verify figures:** most rows come from secondary reporting. |
+| Franchise data story: units sold, Street Fighter treemap, box office, units vs box office | ✅ Done. Franchise logos go in `app/assets/img/logos/` (initials until then). |
+| Page 3: credits | ⏳ To do |
 | Real music: `app/assets/music/*.vgz` rendered to WAV and encoded to MP3 with `scripts/convert_music.py` (needs VGMPlay and ffmpeg; files stay out of git) | ⏳ To do |
 | Pixel font for the select screen (`app/assets/fonts/pixel.*`) | ⏳ To do |
 | Publish to Tableau Cloud and review live (5-second and takeaway tests) | ⏳ To do |

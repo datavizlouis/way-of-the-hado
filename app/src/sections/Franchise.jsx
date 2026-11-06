@@ -1,317 +1,640 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+
+// The data story after Player Select: two scroll pages, then the sources.
+//   Page 1 (units sold)  1. one life bar per franchise, Street Fighter lit, the rest grey
+//                        2. the same bars split into the games each publisher reports; hover lights a franchise
+//   Page 2 (legacy)      1. Street Fighter's games as a treemap, Street Fighter II's four versions ringed in red
+//                        2. every film as a treemap, by worldwide box office
+//                        3. a butterfly: games sold to the left, box office to the right
+// Every number comes from the "Franchise Metrics" rows; each has a source and an as-of date
+// (see data/franchise_metrics.csv). Nothing is estimated here. The only arithmetic is adding
+// up published figures (a franchise's films, Street Fighter II's four versions, a franchise's
+// named games when it has no series total), and the labels say so.
 
 const SF = 'Street Fighter';
-const RED = '#e2403f';
-const GREY = '#7d86a3';
-const GRID = 'rgba(236,230,214,0.10)';
-const TEXT = '#ece6d6';
-const MUTED = '#a8afc6';
+const SF_ARCADE = '#f8d038'; // the HUD's life-bar yellow: Street Fighter throughout
+const SF_ARCADE_2 = '#f0a020'; // second shade, so neighbouring games read as separate blocks
+const REST = '#5b6bb0'; // everyone else on page 2
+const GREY = '#c9cdd8'; // everyone else on page 1
+const GREY_2 = '#a3a9ba';
+const MOVE = 'transform 0.8s cubic-bezier(.3,.7,.2,1), width 0.8s cubic-bezier(.3,.7,.2,1), height 0.8s cubic-bezier(.3,.7,.2,1), opacity 0.5s';
 
 const num = (v) => (typeof v === 'number' ? v : parseFloat(String(v).replace(/,/g, '')));
-const parseAsOf = (s) => {
-  const [y, m = '6', d = '15'] = String(s || '').split('-');
-  return new Date(Number(y), Number(m) - 1, Number(d));
-};
-const fmtUnits = (v) => `${v >= 10 ? Math.round(v) : v.toFixed(1)}M`;
-const fmtUsd = (v) => (v >= 1000 ? `$${(v / 1000).toFixed(1)}B` : `$${v >= 10 ? Math.round(v) : v.toFixed(1)}M`);
+const has = (v) => v !== '' && v != null && !Number.isNaN(num(v));
+const fmtM = (v) => `${v >= 10 ? v.toFixed(1) : v.toFixed(2).replace(/0$/, '')}M`;
+const fmtUsd = (v) => (v >= 1 ? `$${v.toFixed(1)}M` : `$${(v * 1000).toFixed(v >= 0.1 ? 0 : 1)}K`);
+const and = (a) => (a.length > 1 ? `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}` : a.join(''));
+const sum = (a) => a.reduce((t, d) => t + d.v, 0);
+const year = (asOf) => Number(String(asOf).slice(0, 4));
 
-function useWidth(ref) {
-  const [w, setW] = useState(800);
-  useEffect(() => {
-    const ro = new ResizeObserver(([e]) => setW(Math.round(e.contentRect.width)));
+// ---------------------------------------------------------------- data shaping
+
+function useStory(rows) {
+  return useMemo(() => {
+    const by = (cat) => rows.filter((r) => r.Category === cat);
+    const titles = by('Title units').filter((r) => has(r.Value));
+    const series = new Map(by('Series units (cumulative)').filter((r) => has(r.Value)).map((r) => [r.Franchise, r]));
+    const missing = new Map(by('No published figure').map((r) => [r.Franchise, r]));
+    const names = [...new Set([...series.keys(), ...missing.keys(), ...titles.map((r) => r.Franchise)])];
+
+    const franchises = names.map((name) => {
+      const s = series.get(name);
+      const ts = titles
+        .filter((r) => r.Franchise === name)
+        .map((r) => ({ id: `t:${r.Title}`, label: r.Title, v: num(r.Value), r }))
+        .sort((a, b) => b.v - a.v);
+      // A game released in or after the year of the series count, with a later figure, came out
+      // after that count (Mortal Kombat 1 and the May 2023 total). It's drawn past the end of the
+      // bar, never added to it.
+      const after = s && s['As Of'] ? ts.filter((t) => Number(t.r.Year) >= year(s['As Of']) && t.r['As Of'] > s['As Of']) : [];
+      const inside = ts.filter((t) => !after.includes(t));
+      const total = s ? num(s.Value) : inside.length ? sum(inside) : null;
+      const kind = s ? 'series' : inside.length ? 'atLeast' : 'none';
+      const segs = [...inside];
+      if (s && total - sum(inside) > 0.005) {
+        segs.push({ id: `o:${name}`, label: 'Other games', v: total - sum(inside), other: true, r: s });
+      }
+      return { name, kind, total, segs, after, series: s, missing: missing.get(name) };
+    });
+    franchises.sort((a, b) => (b.total ?? -1) - (a.total ?? -1) || a.name.localeCompare(b.name));
+
+    const films = by('Box office')
+      .filter((r) => has(r.Value) && r.Unit === 'million USD')
+      .map((r) => ({ id: `f:${r.Title}`, label: r.Title.replace(/ \((\d{4}) film\)$/, ' ($1)'), franchise: r.Franchise, v: num(r.Value), r }))
+      .sort((a, b) => b.v - a.v);
+    const boxOffice = [...new Set(films.map((f) => f.franchise))]
+      .map((name) => ({ name, films: films.filter((f) => f.franchise === name), total: sum(films.filter((f) => f.franchise === name)) }))
+      .sort((a, b) => b.total - a.total);
+
+    const quotes = Object.fromEntries(by('Narrative fact').map((r) => [r.Title, r]));
+    return { franchises, films, boxOffice, quotes };
+  }, [rows]);
+}
+
+/** Tooltip content for a franchise's whole bar. */
+function totalTip(f) {
+  if (f.kind === 'series') return { value: `${fmtM(f.total)} units`, eyebrow: f.name, text: f.series.Note };
+  if (f.kind === 'atLeast') return { value: `≥ ${fmtM(f.total)} units`, eyebrow: f.name, text: f.missing?.Note };
+  return { value: 'No published figure', eyebrow: f.name, text: f.missing?.Note };
+}
+
+/** Tooltip content for one game (or the "other games" remainder). */
+function gameTip(f, s) {
+  if (s.other) {
+    return {
+      value: `${fmtM(s.v)} units`,
+      eyebrow: `${f.name} · other games`,
+      text: `The part of ${f.name}'s ${fmtM(f.total)} total that isn't broken down game by game: the series total minus the ${f.segs.length - 1} games named here.`,
+    };
+  }
+  return { value: `${fmtM(s.v)} units`, eyebrow: s.label, text: s.r.Note };
+}
+
+// ---------------------------------------------------------------- layout helpers
+
+/** Squarified treemap of items {v} into a rectangle. */
+function squarify(items, x, y, w, h) {
+  const total = items.reduce((t, d) => t + d.v, 0);
+  if (!total || w <= 0 || h <= 0) return [];
+  const k = (w * h) / total;
+  let rest = items.filter((d) => d.v > 0).map((d) => ({ d, a: d.v * k }));
+  const out = [];
+  const worst = (row, side) => {
+    const s = row.reduce((t, r) => t + r.a, 0);
+    const mx = Math.max(...row.map((r) => r.a));
+    const mn = Math.min(...row.map((r) => r.a));
+    return Math.max((side * side * mx) / (s * s), (s * s) / (side * side * mn));
+  };
+  while (rest.length) {
+    const side = Math.min(w, h);
+    const row = [rest[0]];
+    let i = 1;
+    while (i < rest.length && worst([...row, rest[i]], side) <= worst(row, side)) row.push(rest[i++]);
+    const s = row.reduce((t, r) => t + r.a, 0);
+    if (w >= h) {
+      const cw = s / h;
+      let yy = y;
+      row.forEach((r) => { out.push({ ...r.d, x, y: yy, w: cw, h: r.a / cw }); yy += r.a / cw; });
+      x += cw; w -= cw;
+    } else {
+      const ch = s / w;
+      let xx = x;
+      row.forEach((r) => { out.push({ ...r.d, x: xx, y, w: r.a / ch, h: ch }); xx += r.a / ch; });
+      y += ch; h -= ch;
+    }
+    rest = rest.slice(i);
+  }
+  return out;
+}
+
+/** Two-level treemap: groups, then their children, with a label strip on groups of more than one. */
+function nestedTreemap(groups, x, y, w, h, strip = 20) {
+  const cells = {};
+  const boxes = squarify(groups.map((g) => ({ ...g, v: sum(g.items) })), x, y, w, h);
+  boxes.forEach((b) => {
+    b.strip = b.items.length > 1 && b.h > strip * 2.2 && b.w > 70 ? strip : 0; // a lone item names itself
+    squarify(b.items, b.x, b.y + b.strip, b.w, b.h - b.strip).forEach((c) => { cells[c.id] = c; });
+  });
+  return { cells, boxes };
+}
+
+/** Lay segments end to end along a bar; dir -1 grows leftwards from x. */
+function stack(segs, x, y, h, scale, dir = 1) {
+  const out = {};
+  let at = 0;
+  segs.forEach((s) => {
+    const w = Math.max(1.5, s.v * scale);
+    out[s.id] = { x: dir > 0 ? x + at : x - at - w, y, w, h };
+    at += s.v * scale;
+  });
+  return out;
+}
+
+const inset = (r) => r && { ...r, x: r.x + 1, y: r.y + 1, w: Math.max(1, r.w - 2), h: Math.max(1, r.h - 2) };
+
+function useBox(ref) {
+  const [box, setBox] = useState({ w: 900, h: 600 });
+  useLayoutEffect(() => {
+    const ro = new ResizeObserver(([e]) => setBox({ w: Math.round(e.contentRect.width), h: Math.round(e.contentRect.height) }));
     ro.observe(ref.current);
     return () => ro.disconnect();
   }, [ref]);
-  return w;
+  return box;
 }
 
-function useViewportH() {
-  const [h, setH] = useState(window.innerHeight);
-  useEffect(() => {
-    const on = () => setH(window.innerHeight);
-    window.addEventListener('resize', on);
-    return () => window.removeEventListener('resize', on);
-  }, []);
-  return h;
-}
+// ---------------------------------------------------------------- shared pieces
 
-function niceMax(v) {
-  const p = Math.pow(10, Math.floor(Math.log10(v)));
-  const m = v / p;
-  return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p;
-}
-
-function Tooltip({ tip }) {
+/** Big value, then what it is, then a line of plain words on what it measures and where it came from. */
+function Tip({ tip }) {
   if (!tip) return null;
+  const left = Math.min(tip.x + 16, window.innerWidth - 360);
+  const top = Math.min(tip.y + 16, window.innerHeight - 220);
   return (
-    <div className="tip" style={{ left: tip.x, top: tip.y }} role="status">
-      <strong>{tip.title}</strong>
-      <span>{tip.value}</span>
-      {tip.source && <em>{tip.source}</em>}
+    <div className="fx-tip" style={{ left, top }} role="status">
+      <div className="fx-tip-v">{tip.value}</div>
+      <div className="fx-tip-e">{tip.eyebrow}</div>
+      {tip.text && <p>{tip.text}</p>}
     </div>
   );
 }
 
-// ---------------------------------------------------------------- cumulative lines
-
-function SeriesLines({ rows, width, height: H }) {
-  const [tip, setTip] = useState(null);
-  const series = useMemo(() => {
-    const m = new Map();
-    rows
-      .filter((r) => r.Category === 'Series units (cumulative)')
-      .forEach((r) => {
-        if (!m.has(r.Franchise)) m.set(r.Franchise, []);
-        m.get(r.Franchise).push({ d: parseAsOf(r['As Of']), v: num(r.Value), r });
-      });
-    return [...m.entries()]
-      .map(([name, pts]) => ({ name, pts: pts.sort((a, b) => a.d - b.d) }))
-      // drop series whose sources disagree so badly the line would fall (a cumulative total can't shrink)
-      .filter((s) => s.pts.length > 1 && s.pts.every((p, i) => !i || p.v >= s.pts[i - 1].v));
-  }, [rows]);
-  if (!series.length) return null;
-  const M = { t: 20, r: 150, b: 34, l: 44 };
-  const iw = width - M.l - M.r;
-  const ih = H - M.t - M.b;
-  const all = series.flatMap((s) => s.pts);
-  const d0 = new Date(Math.min(...all.map((p) => p.d)));
-  const d1 = new Date(Math.max(...all.map((p) => p.d)));
-  d0.setMonth(0, 1);
-  const yMax = niceMax(Math.max(...all.map((p) => p.v)) * 1.05);
-  const x = (d) => M.l + ((d - d0) / (d1 - d0)) * iw;
-  const y = (v) => M.t + ih - (v / yMax) * ih;
-  const years = [];
-  for (let yr = d0.getFullYear(); yr <= d1.getFullYear(); yr++) years.push(yr);
-  const step = Math.ceil(years.length / Math.max(2, Math.floor(iw / 70)));
-  // direct labels, nudged apart
-  const labels = series
-    .map((s) => ({ s, y: y(s.pts[s.pts.length - 1].v) }))
-    .sort((a, b) => a.y - b.y);
-  for (let i = 1; i < labels.length; i++) if (labels[i].y - labels[i - 1].y < 18) labels[i].y = labels[i - 1].y + 18;
+/**
+ * One rectangle that animates between layouts. The outer box moves; the inner block carries
+ * the colour and lifts on hover, so the hover target stays put while the block rises.
+ */
+function Cell({ rect, colour, className = '', lift, children, tip, onTip, onEnter, onLeave }) {
+  const r = { x: 0, y: 0, w: 0, h: 0, ...rect };
+  const hidden = !rect || rect.hidden;
   return (
-    <div className="chart">
-      <svg width={width} height={H} role="img" aria-label="Cumulative series units sold over time by franchise">
-        {[0, 0.25, 0.5, 0.75, 1].map((f) => (
-          <g key={f}>
-            <line x1={M.l} x2={M.l + iw} y1={y(yMax * f)} y2={y(yMax * f)} stroke={GRID} />
-            <text x={M.l - 8} y={y(yMax * f)} dy="0.32em" textAnchor="end" className="axis">
-              {Math.round(yMax * f)}M
-            </text>
-          </g>
+    <div
+      className="fx-cell"
+      style={{
+        // whole pixels: fractional edges leave hairline seams between neighbouring blocks
+        transform: `translate(${Math.round(r.x)}px, ${Math.round(r.y)}px)`,
+        width: Math.max(0, Math.round(r.x + r.w) - Math.round(r.x)),
+        height: Math.max(0, Math.round(r.y + r.h) - Math.round(r.y)),
+        opacity: hidden ? 0 : 1,
+        pointerEvents: hidden ? 'none' : undefined,
+        transition: MOVE,
+        zIndex: lift ? 3 : undefined,
+      }}
+      onMouseEnter={onEnter}
+      onMouseMove={tip && onTip ? (e) => onTip({ ...tip, x: e.clientX, y: e.clientY }) : undefined}
+      onMouseLeave={() => {
+        if (tip && onTip) onTip(null);
+        if (onLeave) onLeave();
+      }}
+    >
+      <div className={`fx-block ${className} ${lift ? 'lifted' : ''}`} style={{ backgroundColor: colour }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Fade({ show, style, className = '', children }) {
+  return (
+    <div className={`fx-fade ${className}`} style={{ ...style, opacity: show ? 1 : 0, transition: 'opacity 0.5s, left 0.8s, top 0.8s' }} aria-hidden={!show}>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Sticky graphic with full-screen steps scrolling over it. Each step is a snap point; the
+ * step most in view drives the graphic. `step` is -1 until the page is first reached, so the
+ * graphic can animate in from its opening layout.
+ */
+function Scrolly({ label, steps, children }) {
+  const ref = useRef(null);
+  const [step, setStep] = useState(-1);
+  useEffect(() => {
+    const root = ref.current.closest('main');
+    const els = [...ref.current.querySelectorAll('.fx-step')];
+    const io = new IntersectionObserver(
+      (es) => es.forEach((e) => e.isIntersecting && setStep(els.indexOf(e.target))),
+      { root, threshold: 0.55 },
+    );
+    els.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, [steps.length]);
+  return (
+    <section className="fx-page" ref={ref} aria-label={label}>
+      <div className="fx-stage">{children(step)}</div>
+      <div className="fx-steps">
+        {steps.map((s, i) => (
+          <div key={i} className={`screen fx-step ${i === step ? 'on' : ''}`}>
+            <div className="fx-card">{s}</div>
+          </div>
         ))}
-        {years
-          .filter((_, i) => i % step === 0)
-          .map((yr) => (
-            <text key={yr} x={x(new Date(yr, 0, 1))} y={H - 10} textAnchor="middle" className="axis">
-              {yr}
-            </text>
-          ))}
-        {[...series]
-          .sort((a) => (a.name === SF ? 1 : -1))
-          .map((s) => {
-            const sf = s.name === SF;
-            const d = s.pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.d)},${y(p.v)}`).join('');
-            return (
-              <g key={s.name}>
-                <path d={d} fill="none" stroke={sf ? RED : GREY} strokeWidth={sf ? 3.5 : 2} opacity={sf ? 1 : 0.75} />
-                {s.pts.map((p, i) => (
-                  <circle
-                    key={i}
-                    cx={x(p.d)}
-                    cy={y(p.v)}
-                    r={sf ? 4.5 : 3.2}
-                    fill={sf ? RED : GREY}
-                    stroke="#0b1022"
-                    strokeWidth="1.5"
-                    onMouseEnter={() =>
-                      setTip({
-                        x: x(p.d),
-                        y: y(p.v) - 12,
-                        title: `${s.name} · ${p.r['As Of']}`,
-                        value: `${fmtUnits(p.v)} units sold (lifetime)`,
-                        source: p.r.Source,
-                      })
-                    }
-                    onMouseLeave={() => setTip(null)}
-                  />
-                ))}
-              </g>
-            );
-          })}
-        {labels.map(({ s, y: ly }) => {
-          const last = s.pts[s.pts.length - 1];
-          const sf = s.name === SF;
-          return (
-            <text key={s.name} x={x(last.d) + 10} y={ly} dy="0.32em" className={`direct ${sf ? 'sf' : ''}`}>
-              {s.name} <tspan className="val">{fmtUnits(last.v)}</tspan>
-            </text>
-          );
-        })}
-      </svg>
-      <Tooltip tip={tip} />
-    </div>
+      </div>
+    </section>
   );
 }
 
-// ---------------------------------------------------------------- ranked bars
+// ---------------------------------------------------------------- page 1: units sold
 
-function Bars({ items, width, fmt, label, maxH }) {
-  const [tip, setTip] = useState(null);
-  const rowH = Math.min(30, (maxH - 12) / items.length);
-  const M = { t: 6, r: 70, b: 6, l: Math.min(270, width * 0.42) };
-  const H = M.t + M.b + items.length * rowH;
-  const iw = width - M.l - M.r;
-  const max = Math.max(...items.map((d) => d.v));
-  return (
-    <div className="chart">
-      <svg width={width} height={H} role="img" aria-label={label}>
-        {items.map((d, i) => {
-          const sf = d.franchise === SF;
-          const yy = M.t + i * rowH;
-          const w = Math.max(2, (d.v / max) * iw);
-          return (
-            <g
-              key={d.label}
-              onMouseEnter={() => setTip({ x: M.l + w, y: yy, title: d.label, value: fmt(d.v), source: `${d.source}${d.note ? ' — ' + d.note : ''}` })}
-              onMouseLeave={() => setTip(null)}
-            >
-              <text x={M.l - 10} y={yy + rowH / 2} dy="0.32em" textAnchor="end" className={`bar-label ${sf ? 'sf' : ''}`}>
-                {d.label}
-              </text>
-              <rect x={M.l} y={yy + 5} width={w} height={rowH - 10} fill={sf ? RED : GREY} opacity={sf ? 1 : 0.6} rx="1" />
-              <text x={M.l + w + 6} y={yy + rowH / 2} dy="0.32em" className={`bar-val ${sf ? 'sf' : ''}`}>
-                {fmt(d.v)}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-      <Tooltip tip={tip} />
-    </div>
-  );
-}
+function UnitsChart({ story, step, onTip }) {
+  const ref = useRef(null);
+  const { w: W, h: H } = useBox(ref);
+  const [hot, setHot] = useState(null); // { row, id } under the pointer, game view only
+  const games = step >= 1; // step 0 (and before the page is reached): one bar per franchise
+  useEffect(() => setHot(null), [games]);
 
-// ---------------------------------------------------------------- SF6 step chart
+  const fs = story.franchises;
+  const rowH = H / fs.length;
+  const scoreW = 190; // room for "≥66.7M" in the score font
+  const max = Math.max(...fs.map((f) => (f.total ?? 0) + sum(f.after)));
+  const k = (W - scoreW - 6) / max;
+  const barH = Math.max(10, Math.min(24, rowH * 0.36));
+  const barTop = (i) => i * rowH + rowH - barH - Math.max(4, rowH * 0.12);
 
-function Milestones({ rows, width, height: H }) {
-  const pts = rows
-    .filter((r) => r.Title === 'Street Fighter 6' && r.Category === 'Title units')
-    .map((r) => ({ d: parseAsOf(r['As Of']), v: num(r.Value), r }))
-    .sort((a, b) => a.d - b.d);
-  if (pts.length < 2) return null;
-  const M = { t: 16, r: 50, b: 28, l: 40 };
-  const iw = width - M.l - M.r;
-  const ih = H - M.t - M.b;
-  const d0 = new Date(2023, 5, 1);
-  const d1 = pts[pts.length - 1].d;
-  const yMax = niceMax(pts[pts.length - 1].v);
-  const x = (d) => M.l + ((d - d0) / (d1 - d0 || 1)) * iw;
-  const y = (v) => M.t + ih - (v / yMax) * ih;
-  let path = `M${x(d0)},${y(0)}`;
-  pts.forEach((p) => {
-    path += `H${x(p.d)}V${y(p.v)}`;
+  const cells = [];
+  const rows = fs.map((f, i) => {
+    const y = barTop(i);
+    const sf = f.name === SF;
+    const lit = games ? hot?.row === f.name : sf;
+    const frameW = f.kind === 'none' ? null : f.total * k + 6;
+    const afterW = games && f.after.length ? sum(f.after) * k + 8 : 0;
+
+    const seg = stack(f.segs, 3, y + 3, barH - 6, k);
+    f.segs.forEach((s, j) => {
+      const r = seg[s.id];
+      const pad = games ? 1 : 0;
+      const colour = games ? (lit ? (j % 2 ? SF_ARCADE_2 : SF_ARCADE) : j % 2 ? GREY_2 : GREY) : lit ? SF_ARCADE : GREY;
+      cells.push(
+        <Cell
+          key={s.id}
+          rect={{ ...r, x: r.x + pad, w: Math.max(1, r.w - pad * 2 + (games ? 0 : 1)) }} // fused: overlap 1px so no seams show
+          colour={colour}
+          className={`hp-seg ${s.other && games ? 'other' : ''}`}
+          lift={games && hot?.id === s.id}
+          tip={games ? gameTip(f, s) : totalTip(f)}
+          onTip={onTip}
+          onEnter={games ? () => setHot({ row: f.name, id: s.id }) : undefined}
+          onLeave={games ? () => setHot(null) : undefined}
+        >
+          {games && r.w > 96 && !s.other && <span className="hp-seg-label">{s.label.replace(/^(Super )?Street Fighter/, (m) => (m.startsWith('Super') ? 'Super SF' : 'SF'))}</span>}
+        </Cell>,
+      );
+    });
+    f.after.forEach((s) => {
+      const r = { x: 3 + f.total * k + 10, y: y + 3, w: s.v * k, h: barH - 6, hidden: !games };
+      cells.push(
+        <Cell
+          key={s.id}
+          rect={r}
+          className={`hp-after ${lit ? 'lit' : ''}`}
+          lift={hot?.id === s.id}
+          tip={{ ...gameTip(f, s), eyebrow: `${s.label} · not in the series total` }}
+          onTip={onTip}
+          onEnter={() => setHot({ row: f.name, id: s.id })}
+          onLeave={() => setHot(null)}
+        >
+          {r.w > 70 && <span className="hp-seg-label">{s.label.replace('Mortal Kombat', 'MK')}</span>}
+        </Cell>,
+      );
+    });
+
+    return (
+      <div key={f.name} className={`hp-row ${lit ? 'lit' : ''}`}>
+        <div className="hp-name pixel" style={{ left: 0, top: y - 20 }}>
+          {f.name}
+        </div>
+        <div
+          className={`hp-track ${f.kind === 'none' ? 'none' : ''}`}
+          style={{ left: 0, top: y, height: barH, width: frameW ?? undefined }}
+          onMouseMove={(e) => onTip({ ...totalTip(f), x: e.clientX, y: e.clientY })}
+          onMouseLeave={() => onTip(null)}
+        >
+          {f.kind === 'none' && <span className="pixel">No published figure</span>}
+        </div>
+        {f.kind !== 'none' && (
+          <div className="hp-score pixel" style={{ left: frameW + afterW + 12, top: y + barH / 2 }}>
+            {`${f.kind === 'atLeast' ? '≥' : ''}${fmtM(f.total)}`}
+          </div>
+        )}
+      </div>
+    );
   });
+
   return (
-    <svg width={width} height={H} role="img" aria-label="Street Fighter 6 cumulative sales milestones">
-      {[0, 0.5, 1].map((f) => (
-        <g key={f}>
-          <line x1={M.l} x2={M.l + iw} y1={y(yMax * f)} y2={y(yMax * f)} stroke={GRID} />
-          <text x={M.l - 6} y={y(yMax * f)} dy="0.32em" textAnchor="end" className="axis">
-            {yMax * f}M
-          </text>
-        </g>
-      ))}
-      <path d={path} fill="none" stroke={RED} strokeWidth="3" />
-      {pts.map((p, i) => (
-        <g key={i}>
-          <circle cx={x(p.d)} cy={y(p.v)} r="4" fill={RED} />
-          {(i === 0 || i === pts.length - 1) && (
-            <text x={x(p.d) + (i ? 0 : 8)} y={y(p.v) + (i ? -10 : -4)} textAnchor={i ? 'end' : 'start'} className="bar-val sf">
-              {fmtUnits(p.v)} · {p.r['As Of']}
-            </text>
+    <div className="fx-chart" ref={ref}>
+      {rows}
+      {cells}
+    </div>
+  );
+}
+
+function UnitsPage({ story, onTip }) {
+  const fs = story.franchises;
+  const ranked = fs.filter((f) => f.kind === 'series');
+  const sfRank = ranked.findIndex((f) => f.name === SF) + 1;
+  const ahead = ranked.slice(0, Math.max(0, sfRank - 1)).map((f) => f.name);
+  const none = fs.filter((f) => f.kind === 'none').map((f) => f.name);
+  const sf = fs.find((f) => f.name === SF);
+  const aheadNoTotal = sf ? fs.filter((f) => f.kind === 'atLeast' && f.total > sf.total) : [];
+  const ordinal = (n) => `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'}`;
+  const named = sf ? sf.segs.filter((s) => !s.other) : [];
+  const steps = [
+    <>
+      <p className="eyebrow">Units sold</p>
+      <h2 className="brush-title fx-oneline">{sfRank ? `Street Fighter claims ${ordinal(sfRank)}` : 'Units sold'}</h2>
+      {sf && (
+        <p className="fx-body">
+          Street Fighter has sold {fmtM(sf.total)} games. Of the series with an official total, only {and(ahead)} have sold more.
+          {aheadNoTotal.map(
+            (f) =>
+              ` ${f.name} never gets an official total, but the ${f.segs.length} games it reports add up to ${fmtM(f.total)} on their own, so it's ahead too.`,
           )}
-        </g>
+        </p>
+      )}
+      {none.length > 0 && <p className="fx-body">Some can't be ranked at all: {and(none)} have never had their sales published.</p>}
+    </>,
+    <>
+      <p className="eyebrow">Units sold, game by game</p>
+      <h2 className="brush-title">Every game, counted</h2>
+      {sf && (
+        <p className="fx-body">
+          Now split each bar into the games behind it. Capcom names {named.length} Street Fighter games that sold over a million, and together they
+          make up {fmtM(sum(named))} of the {fmtM(sf.total)}. The striped end is everything a publisher doesn't count game by game.
+        </p>
+      )}
+      <p className="fx-hint">Hover a game to light up its franchise.</p>
+    </>,
+  ];
+  return (
+    <Scrolly label="Units sold" steps={steps}>
+      {(step) => <UnitsChart story={story} step={Math.max(0, step)} onTip={onTip} />}
+    </Scrolly>
+  );
+}
+
+// ---------------------------------------------------------------- page 2: legacy
+
+const SF2_ERA = /^(Super )?Street Fighter II\b/;
+const SF4_ERA = /Street Fighter IV/;
+
+function LegacyChart({ story, step, onTip }) {
+  const ref = useRef(null);
+  const { w: W, h: H } = useBox(ref);
+  const [hot, setHot] = useState(null);
+  useEffect(() => setHot(null), [step]);
+
+  const sf = story.franchises.find((f) => f.name === SF);
+  const sfSegs = sf ? sf.segs : [];
+  const era = (s) => (s.other ? 'other' : SF2_ERA.test(s.label) ? 'sf2' : SF4_ERA.test(s.label) ? 'sf4' : s.id);
+
+  // step 0: Street Fighter's games, grouped by era
+  const groups = [];
+  sfSegs.forEach((s) => {
+    const key = era(s);
+    let g = groups.find((x) => x.key === key);
+    if (!g) groups.push((g = { key, id: `g:${key}`, items: [] }));
+    g.items.push(s);
+  });
+  const groupName = (g) => (g.key === 'sf2' ? 'Street Fighter II, all 4 versions' : g.key === 'sf4' ? 'Street Fighter IV, all 5 versions' : g.items[0].label);
+  const sfTree = nestedTreemap(groups, 0, 0, W, H, 22);
+  const sf2Box = sfTree.boxes.find((b) => b.key === 'sf2');
+
+  // step 1: every film; step 2: butterfly, games to the left of the names, box office to the right
+  const bo = story.boxOffice;
+  const filmTree = nestedTreemap(bo.map((b) => ({ key: b.name, id: `fg:${b.name}`, items: b.films })), 0, 0, W, H, 22);
+  const mid = W / 2;
+  const nameW = 180;
+  const sideW = mid - nameW / 2 - 110; // leaves room for the value past each bar
+  const rowH = Math.min(84, (H - 40) / Math.max(1, bo.length));
+  const barH = Math.min(30, rowH * 0.42);
+  const rowsTop = 40 + (H - 40 - rowH * bo.length) / 2;
+  const unitsOf = (name) => story.franchises.find((f) => f.name === name);
+  const unitsMax = Math.max(...bo.map((b) => unitsOf(b.name)?.total ?? 0));
+  const boMax = Math.max(...bo.map((b) => b.total));
+  const leftX = mid - nameW / 2;
+  const rightX = mid + nameW / 2;
+
+  const rect = {};
+  if (step < 0) Object.assign(rect, stack(sfSegs, 0, H / 2 - 14, 28, W / Math.max(1, sum(sfSegs))));
+  else if (step === 0) Object.assign(rect, sfTree.cells);
+  else if (step === 1) story.films.forEach((f) => (rect[f.id] = filmTree.cells[f.id]));
+  else {
+    bo.forEach((b, i) => {
+      const y = rowsTop + i * rowH + (rowH - barH) / 2;
+      Object.assign(rect, stack(b.films, rightX, y, barH, sideW / boMax));
+      if (b.name === SF) Object.assign(rect, stack(sfSegs, leftX, y, barH, sideW / unitsMax, -1));
+    });
+    // each side reads as one bar: neighbouring blocks overlap by a pixel so no seams show
+    Object.keys(rect).forEach((id) => (rect[id] = { ...rect[id], w: rect[id].w + 1 }));
+  }
+  const sfShown = step <= 0 || step === 2;
+  const sfColour = (s, i) => (step === 2 ? SF_ARCADE : i % 2 && step < 0 ? SF_ARCADE_2 : SF_ARCADE);
+
+  return (
+    <div className="fx-chart" ref={ref}>
+      {/* treemap group labels */}
+      {sfTree.boxes.map((b) => (
+        <Fade key={b.id} show={step === 0 && b.strip > 0} className={`tm-group ${b.key === 'sf2' ? 'hot' : ''}`} style={{ left: b.x + 6, top: b.y + 3, maxWidth: b.w - 12 }}>
+          {groupName(b)} · {fmtM(sum(b.items))}
+        </Fade>
       ))}
-      {[2023, 2024, 2025, 2026]
-        .filter((yr) => new Date(yr, 0, 1) <= d1)
-        .map((yr) => (
-          <text key={yr} x={x(new Date(Math.max(d0, new Date(yr, 0, 1))))} y={H - 8} textAnchor="middle" className="axis">
-            {yr}
-          </text>
-        ))}
-    </svg>
+      {filmTree.boxes.map((b) => (
+        <Fade key={b.id} show={step === 1 && b.strip > 0} className="tm-group" style={{ left: b.x + 6, top: b.y + 3, maxWidth: b.w - 12 }}>
+          {b.key} · {fmtUsd(sum(b.items))}
+        </Fade>
+      ))}
+      {sf2Box && (
+        <Fade show={step === 0} className="sf2-ring" style={{ left: sf2Box.x - 2, top: sf2Box.y - 2, width: sf2Box.w + 4, height: sf2Box.h + 4 }} />
+      )}
+
+      {/* butterfly: headings, names, values */}
+      <Fade show={step === 2} className="pair-head" style={{ right: W - leftX, top: rowsTop - 30 }}>
+        Games sold
+      </Fade>
+      <Fade show={step === 2} className="pair-head" style={{ left: rightX, top: rowsTop - 30 }}>
+        Box office
+      </Fade>
+      {bo.map((b, i) => {
+        const y = rowsTop + i * rowH + (rowH - barH) / 2;
+        const u = unitsOf(b.name);
+        const uw = u && u.kind !== 'none' ? u.total * (sideW / unitsMax) : 0;
+        const sfRow = b.name === SF;
+        return (
+          <React.Fragment key={b.name}>
+            <Fade show={step === 2} className={`bf-name ${sfRow ? 'sf' : ''}`} style={{ left: leftX, width: nameW, top: y + barH / 2 }}>
+              {b.name}
+            </Fade>
+            <Fade show={step === 2} className={`bf-val ${u && u.kind !== 'none' ? '' : 'none'}`} style={{ right: W - (leftX - uw - 10), top: y + barH / 2 }}>
+              {u && u.kind !== 'none' ? `${u.kind === 'atLeast' ? '≥' : ''}${fmtM(u.total)}` : 'No published figure'}
+            </Fade>
+            <Fade show={step === 2} className="bf-val" style={{ left: rightX + b.total * (sideW / boMax) + 10, top: y + barH / 2 }}>
+              {fmtUsd(b.total)}
+              <small>{b.films.length > 1 ? `${b.films.length} films` : '1 film'}</small>
+            </Fade>
+            {u && u.kind !== 'none' && !sfRow && (
+              <Cell
+                rect={{ x: leftX - uw, y, w: uw, h: barH, hidden: step !== 2 }}
+                colour={REST}
+                tip={totalTip(u)}
+                onTip={onTip}
+              />
+            )}
+          </React.Fragment>
+        );
+      })}
+
+      {/* Street Fighter's games */}
+      {sfSegs.map((s, i) => (
+        <Cell
+          key={s.id}
+          rect={rect[s.id] ? { ...(step === 0 ? inset(rect[s.id]) : rect[s.id]), hidden: !sfShown } : { hidden: true }}
+          colour={sfColour(s, i)}
+          className={`tm-cell gold ${s.other && step !== 2 ? 'other' : ''}`}
+          tip={step === 2 ? totalTip(sf) : gameTip(sf, s)}
+          onTip={onTip}
+        >
+          {step === 0 && rect[s.id] && rect[s.id].w > 80 && rect[s.id].h > 54 && (
+            <span className="tm-label">
+              {s.label}
+              <b>{fmtM(s.v)}</b>
+            </span>
+          )}
+        </Cell>
+      ))}
+
+      {/* films */}
+      {story.films.map((f) => {
+        const sfFilm = f.franchise === SF;
+        const r = rect[f.id];
+        return (
+          <Cell
+            key={f.id}
+            rect={r ? { ...(step === 1 ? inset(r) : r), hidden: step < 1 } : { hidden: true }}
+            colour={sfFilm ? SF_ARCADE : REST}
+            className={`tm-cell film ${sfFilm ? 'gold' : ''}`}
+            lift={step === 1 && hot === f.id}
+            tip={{ value: fmtUsd(f.v), eyebrow: f.label, text: f.r.Note }}
+            onTip={onTip}
+            onEnter={() => setHot(f.id)}
+            onLeave={() => setHot(null)}
+          >
+            {step === 1 && r && r.w > 80 && r.h > 54 && (
+              <span className="tm-label">
+                {f.label}
+                <b>{fmtUsd(f.v)}</b>
+              </span>
+            )}
+          </Cell>
+        );
+      })}
+    </div>
+  );
+}
+
+function LegacyPage({ story, onTip }) {
+  const sf = story.franchises.find((f) => f.name === SF);
+  const sf2 = sf ? sf.segs.filter((s) => SF2_ERA.test(s.label)) : [];
+  const singles = sf ? sf.segs.filter((s) => !s.other && !SF2_ERA.test(s.label) && !SF4_ERA.test(s.label)) : [];
+  const q = story.quotes;
+  const bo = story.boxOffice;
+  const mk = bo.find((b) => b.name === 'Mortal Kombat');
+  const sfBo = bo.find((b) => b.name === SF);
+  const topFilm = story.films[0];
+  const tek = bo.find((b) => b.name === 'Tekken');
+  const tekUnits = story.franchises.find((f) => f.name === 'Tekken');
+  const stillOut = story.films.filter((f) => /still in cinemas/i.test(f.r.Note));
+  const bigFilms = [...new Set(story.films.filter((f) => f.v > 10).map((f) => f.franchise))];
+  const times = (a, b) => {
+    const r = a / b;
+    return r >= 1.75 && r < 2 ? 'almost twice' : r >= 2 && r < 2.25 ? 'about twice' : `${r.toFixed(1)} times`;
+  };
+  const Quote = ({ k }) =>
+    q[k] ? (
+      <span className="fx-quote" title={`${q[k].Source}, ${q[k]['As Of']}`}>
+        “{q[k].Note}”
+      </span>
+    ) : null;
+
+  const steps = [
+    <>
+      <p className="eyebrow">Street Fighter's Legacy</p>
+      <h2 className="brush-title">The Arcade Boom</h2>
+      {sf2.length > 0 && (
+        <p className="fx-body">
+          Street Fighter II is the reason we're all here. Its {sf2.length} home versions add up to {fmtM(sum(sf2))} copies, the biggest chunk of
+          Capcom's list{singles.length ? `, even though the best-selling single game is ${singles[0].label} at ${fmtM(singles[0].v)}` : ''}.
+        </p>
+      )}
+      <p className="fx-body">
+        And it started in the arcade. Capcom's own history says <Quote k="SF2 boom" /> RePlay, the US arcade trade magazine, called it <Quote k="SF2 coin-op" />, and it
+        turned a slump around: <Quote k="SF2 recovery" /> The coins it took aren't in these numbers, because no one has ever published them.
+      </p>
+    </>,
+    <>
+      <p className="eyebrow">Hollywood takes a swing</p>
+      <h2 className="brush-title">Fatality. MK wins.</h2>
+      {mk && sfBo && (
+        <p className="fx-body">
+          Mortal Kombat's {mk.films.length} films have taken {fmtUsd(mk.total)} worldwide, {times(mk.total, sfBo.total)} Street Fighter's {fmtUsd(sfBo.total)}.
+          {topFilm && ` Its newest, ${topFilm.label.replace(/ \(\d{4}\)$/, '')}, is the biggest fighting-game film yet at ${fmtUsd(topFilm.v)}.`}
+          {stillOut.length > 0 && ` ${and(stillOut.map((f) => f.label))} is still in cinemas, so its number will keep climbing.`}
+        </p>
+      )}
+      <p className="fx-hint">Hover a film for its story.</p>
+    </>,
+    <>
+      <p className="eyebrow">Games and films side by side</p>
+      <h2 className="brush-title">Units don't buy tickets</h2>
+      {tek && tekUnits && (
+        <p className="fx-body">
+          Selling games doesn't guarantee a hit film. Tekken has sold {fmtM(tekUnits.total)} games, but its films took just {fmtUsd(tek.total)}.
+          {bigFilms.length > 0 && ` Only ${and(bigFilms)} have films that took more than $10M.`}
+        </p>
+      )}
+      <p className="fx-body">Games are counted in copies and films in dollars, so each side has its own scale.</p>
+    </>,
+  ];
+  return (
+    <Scrolly label="Street Fighter's legacy" steps={steps}>
+      {(step) => <LegacyChart story={story} step={step} onTip={onTip} />}
+    </Scrolly>
   );
 }
 
 // ---------------------------------------------------------------- section
 
 export default function Franchise({ rows, loadedAt, children }) {
-  const ref = useRef(null);
-  const width = useWidth(ref);
-  const vh = useViewportH();
-  const chartH = Math.max(200, vh - 210); // what's left under a panel's heading and padding
-  const colW = width > 980 ? (width - 48) / 2 : width;
-
-  const latest = (filter) => {
-    const r = rows.filter(filter).sort((a, b) => parseAsOf(b['As Of']) - parseAsOf(a['As Of']))[0];
-    return r ? { v: num(r.Value), r } : null;
-  };
-
-  // lifetime units ranking (latest point per franchise)
-  const ranking = useMemo(() => {
-    const m = new Map();
-    rows
-      .filter((r) => r.Category === 'Series units (cumulative)')
-      .forEach((r) => {
-        const prev = m.get(r.Franchise);
-        if (!prev || parseAsOf(r['As Of']) > parseAsOf(prev['As Of'])) m.set(r.Franchise, r);
-      });
-    return [...m.values()].map((r) => ({ franchise: r.Franchise, v: num(r.Value), r })).sort((a, b) => b.v - a.v);
-  }, [rows]);
-  const sfRank = ranking.findIndex((d) => d.franchise === SF) + 1;
-  const sfSeries = ranking.find((d) => d.franchise === SF);
-  const sfFirst = rows
-    .filter((r) => r.Franchise === SF && r.Category === 'Series units (cumulative)')
-    .sort((a, b) => parseAsOf(a['As Of']) - parseAsOf(b['As Of']))[0];
-
-  const titles = useMemo(() => {
-    const m = new Map();
-    rows
-      .filter((r) => r.Category === 'Title units')
-      .forEach((r) => {
-        const prev = m.get(r.Title);
-        if (!prev || parseAsOf(r['As Of']) > parseAsOf(prev['As Of'])) m.set(r.Title, r);
-      });
-    return [...m.values()]
-      .map((r) => ({ label: r.Title, franchise: r.Franchise, v: num(r.Value), source: r.Source, note: r.Note }))
-      .sort((a, b) => b.v - a.v)
-      .slice(0, 14);
-  }, [rows]);
-
-  const films = useMemo(
-    () =>
-      rows
-        .filter((r) => r.Category === 'Box office')
-        .map((r) => ({ label: r.Title, franchise: r.Franchise, v: num(r.Value), source: r.Source, note: r.Note }))
-        .sort((a, b) => b.v - a.v),
-    [rows],
-  );
-  const sfFilms = films.filter((f) => f.franchise === SF).reduce((a, b) => a + b.v, 0);
-  const sf6 = latest((r) => r.Title === 'Street Fighter 6' && r.Category === 'Title units');
-  const arcade = latest((r) => r.Franchise === SF && r.Category === 'Arcade revenue' && /all versions/i.test(r.Title));
-
+  const story = useStory(rows);
+  const [tip, setTip] = useState(null);
   const sources = useMemo(() => {
     const m = new Map();
     rows.forEach((r) => {
-      if (r.Source && !m.has(r.Source)) m.set(r.Source, r['Source URL']);
+      if (r.Source && r['Source URL'] && !m.has(r.Source)) m.set(r.Source, r['Source URL']);
     });
     return [...m.entries()];
   }, [rows]);
-  const secondary = rows.filter((r) => /secondary|estimate|derived/i.test(`${r.Note} ${r.Source}`)).length;
 
   if (!rows.length) {
     return (
-      <section className="franchise screen" ref={ref}>
+      <section className="franchise screen">
         <p className="error">No rows came back from the “Franchise Metrics” datasource.</p>
         {children}
       </section>
@@ -320,122 +643,28 @@ export default function Franchise({ rows, loadedAt, children }) {
 
   return (
     <>
-    <section className="franchise screen" ref={ref} aria-label="The franchise in numbers">
-      <header className="section-head static">
-        <p className="eyebrow">The franchise in numbers</p>
-        <h2 className="brush-title">
-          {sfSeries ? `${fmtUnits(sfSeries.v)} games sold — and still climbing` : 'Street Fighter by the numbers'}
-        </h2>
-        <p className="lede">
-          {sfSeries &&
-            `Street Fighter ranks #${sfRank} among fighting-game franchises in lifetime units, behind ${ranking
-              .slice(0, sfRank - 1)
-              .map((d) => d.franchise)
-              .join(', ')}. ${
-              sfFirst ? `Since ${parseAsOf(sfFirst['As Of']).getFullYear()} it has added ${fmtUnits(sfSeries.v - num(sfFirst.Value))} units, ` : ''
-            }driven by Street Fighter 6. Its real outlier is the arcade: Street Fighter II's estimated lifetime gross dwarfs anything in this genre.`}
-        </p>
-      </header>
-
-      <div className="kpis">
-        {sfSeries && (
-          <div className="kpi">
-            <span className="kpi-v">{fmtUnits(sfSeries.v)}</span>
-            <span className="kpi-l">series units sold</span>
-            <span className="kpi-s">as of {sfSeries.r['As Of']}</span>
-          </div>
-        )}
-        {sf6 && (
-          <div className="kpi">
-            <span className="kpi-v">{fmtUnits(sf6.v)}</span>
-            <span className="kpi-l">Street Fighter 6</span>
-            <span className="kpi-s">as of {sf6.r['As Of']}</span>
-          </div>
-        )}
-        {sfFilms > 0 && (
-          <div className="kpi">
-            <span className="kpi-v">{fmtUsd(sfFilms)}</span>
-            <span className="kpi-l">worldwide box office, all SF films</span>
-            <span className="kpi-s">unadjusted USD</span>
-          </div>
-        )}
-        {arcade && (
-          <div className="kpi">
-            <span className="kpi-v">~{fmtUsd(arcade.v)}</span>
-            <span className="kpi-l">Street Fighter II lifetime gross</span>
-            <span className="kpi-s">estimate, 2016 dollars</span>
-          </div>
-        )}
-      </div>
-
-    </section>
-
-    <section className="franchise screen" aria-label="Lifetime units by franchise">
-      <div className="panel wide">
-        <h3>Street Fighter climbs steadily but trails Mortal Kombat, Smash and Tekken in lifetime units</h3>
-        <p className="sub">
-          Cumulative franchise units sold, millions, by reporting date. Hover a point for its source. Series with conflicting totals
-          (e.g. Soulcalibur) are omitted.
-        </p>
-        <SeriesLines rows={rows} width={width} height={chartH} />
-      </div>
-    </section>
-
-    <section className="franchise screen" aria-label="Best sellers and box office">
-      <div className="grid2">
-        <div className="panel">
-          <h3>Smash Ultimate outsells every other fighting game; Street Fighter V and 6 lead Capcom's modern era</h3>
-          <p className="sub">Lifetime units of individual titles, latest figure, millions</p>
-          <Bars items={titles} width={colW} fmt={fmtUnits} label="Best-selling individual fighting games" maxH={chartH - 40} />
-        </div>
-        <div className="panel">
-          <h3>
-            Mortal Kombat rules the box office; Street Fighter's films total {fmtUsd(sfFilms)}, led by{' '}
-            {films.find((f) => f.franchise === SF)?.label || 'its 1994 film'}
-          </h3>
-          <p className="sub">Worldwide box office, millions of USD, not adjusted for inflation</p>
-          <Bars items={films} width={colW} fmt={fmtUsd} label="Fighting-game film box office" maxH={chartH - 40} />
-        </div>
-      </div>
-    </section>
-
-    <section className="franchise screen" aria-label="Street Fighter 6 and the arcade">
-      <div className="grid2">
-        <div className="panel">
-          <h3>Street Fighter 6 passed {sf6 ? fmtUnits(sf6.v) : 'its latest milestone'} in about three years</h3>
-          <p className="sub">Cumulative units at each announced milestone</p>
-          <Milestones rows={rows} width={colW} height={Math.min(chartH, 440)} />
-        </div>
-        <div className="panel callout">
-          <h3>Why the arcade number matters</h3>
+      <UnitsPage story={story} onTip={setTip} />
+      <LegacyPage story={story} onTip={setTip} />
+      <section className="franchise screen sources-screen" aria-label="Sources and credits">
+        <footer className="sources">
           <p>
-            In the early 1990s, Street Fighter II sold arcade cabinets and kits, and every coin-op round was a sale. Estimates of
-            its lifetime gross run around {arcade ? fmtUsd(arcade.v) : '$10B'} (inflation-adjusted, counting arcade and home versions),
-            far more than any fighting game has made from units at retail. Treat it as an order of magnitude, not an audited figure.
+            <strong>Sources.</strong> Queried live from the “Franchise Metrics” datasource
+            {loadedAt ? ` at ${loadedAt.toLocaleString()}` : ''}. Every figure comes from a publisher (investor relations, fact books, press
+            releases, or an official post relayed by the outlet named), Nintendo IR, Box Office Mojo or The Numbers, and quotes from the trade magazine RePlay.
+            Publishers count differently: shipped versus sold, bundles, and digital copies.
           </p>
-        </div>
-      </div>
-    </section>
-
-    <section className="franchise screen sources-screen" aria-label="Sources and credits">
-      <footer className="sources">
-        <p>
-          <strong>Sources & caveats.</strong> Queried live from the “Franchise Metrics” datasource
-          {loadedAt ? ` at ${loadedAt.toLocaleString()}` : ''}. Figures were compiled from publisher IR releases and press coverage;{' '}
-          {secondary} of {rows.length} rows rely on secondary reporting or estimates (see the Note column). Publishers count units
-          differently (sell-in vs. sell-through, bundles, digital).
-        </p>
-        <ul>
-          {sources.map(([s, url]) => (
-            <li key={s} title={url ? `${s} — ${url}` : s}>
-              {s}
-              {url ? <span className="url"> — {url}</span> : null}
-            </li>
-          ))}
-        </ul>
-      </footer>
-      {children}
-    </section>
+          <ul>
+            {sources.map(([s, url]) => (
+              <li key={s} title={`${s} — ${url}`}>
+                {s}
+                <span className="url"> — {url}</span>
+              </li>
+            ))}
+          </ul>
+        </footer>
+        {children}
+      </section>
+      <Tip tip={tip} />
     </>
   );
 }

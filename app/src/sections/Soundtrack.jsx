@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Fighter } from '../lib/fighter.js';
-import { playTrack, playSfx, preloadSfx, isPlaying, subscribe, trackLevels, audioProblem } from '../lib/player.js';
+import { playTrack, playSfx, preloadSfx, isPlaying, subscribe, audioProblem } from '../lib/player.js';
 import { assetUrl } from '../assets.js';
-import { useInView } from '../lib/useInView.js';
 import { drawStageMap, STAGES, FLAG_POS, MAP_W, MAP_H } from '../lib/stageMap.js';
 import { getImage } from '../assets.js';
 
@@ -74,11 +73,9 @@ function StageMap({ character }) {
 
 export default function Soundtrack({ characters }) {
   const sectionRef = useRef(null);
-  const eqRef = useRef(null);
   const [cursor, setCursor] = useState(0);
   const [playing, setPlaying] = useState(isPlaying);
   const [track, setTrack] = useState(0); // the item whose music is on; the cursor only browses
-  const inView = useInView(sectionRef, 0.01);
 
   const items = useMemo(() => [THEME, ...characters], [characters]);
   const shown = items[cursor]; // under the cursor
@@ -103,43 +100,6 @@ export default function Soundtrack({ characters }) {
     playSfx('select');
     playTrack(items[i].Id);
   };
-
-  // equaliser
-  useEffect(() => {
-    const c = eqRef.current;
-    const ctx = c.getContext('2d');
-    let raf;
-    const bars = 16;
-    const lv = new Array(bars).fill(0);
-    const loop = (now) => {
-      raf = requestAnimationFrame(loop);
-      if (!inView.current) return;
-      const real = playing ? trackLevels(bars) : null;
-      for (let i = 0; i < bars; i++) {
-        const target = playing
-          ? real
-            ? real[i]
-            : 0.35 + 0.45 * Math.abs(Math.sin(now * 0.004 * (1 + i * 0.13) + i))
-          : 0.04;
-        lv[i] += (target - lv[i]) * 0.3;
-      }
-      // symmetric wave: segments grow up and down from the centre line, so the
-      // equaliser's midpoint stays fixed and lines up with the now-playing text
-      ctx.clearRect(0, 0, c.width, c.height);
-      const bw = c.width / bars;
-      const mid = c.height / 2;
-      for (let i = 0; i < bars; i++) {
-        const segs = Math.max(1, Math.round(lv[i] * 4));
-        for (let s = 0; s < segs; s++) {
-          ctx.fillStyle = s >= 3 ? '#ff4a4a' : s === 2 ? '#ffd23f' : '#3fe07a';
-          ctx.fillRect(i * bw + 1, mid - (s + 1) * 5 + 1, bw - 2, 4);
-          ctx.fillRect(i * bw + 1, mid + s * 5, bw - 2, 4);
-        }
-      }
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [playing]);
 
   const onKey = (e) => {
     // items[0] is the 2x2 "?" tile to the left of both rows; fighters follow in rows of COLS
@@ -197,9 +157,8 @@ export default function Soundtrack({ characters }) {
         </div>
         <div className="select-col">
           <div className="now-playing">
-            <p className="pixel small-pixel dimmed" style={{ visibility: playing ? 'visible' : 'hidden' }}>Now playing</p>
-            <p className="pixel track">{playing ? items[track].Theme : 'Click anywhere to start the music'}</p>
-            <canvas ref={eqRef} width="160" height="40" className="eq" aria-hidden="true" />
+            {playing && <p className="pixel small-pixel dimmed">Now playing</p>}
+            <p className="pixel track">{playing ? items[track].Theme : 'Click a fighter to listen to their theme song'}</p>
           </div>
         <div
           className="select-grid"
