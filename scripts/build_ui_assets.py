@@ -37,10 +37,14 @@ FLAG_ORDER = ['japan', 'brazil', 'usa', 'china', 'ussr', 'india', 'thailand', 's
               'hongkong', 'jamaica', 'england']
 
 
-def key_border_bg(rgba, bg):
+def key_border_bg(rgba, bg, interior=False):
     """Make background transparent only where it is connected to the crop's border
-    (keeps any interior pixels that happen to share the background colour)."""
+    (keeps any interior pixels that happen to share the background colour). With interior,
+    every background pixel goes, enclosed pockets too."""
     is_bg = np.all(rgba[..., :3] == bg, axis=-1)
+    if interior:
+        rgba[is_bg, 3] = 0
+        return rgba
     lab, n = label(is_bg)
     edge = set(np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))) - {0}
     for k in edge:
@@ -77,7 +81,9 @@ def gary():
         faces = sorted([b for b in boxes if b[4] > 2500 and name_top + 10 < b[1] < name_top + 30], key=lambda b: b[0])
         for sid, (x0, y0, x1, y1, _) in zip(ids, faces):
             crop = a[name_top: y1, max(0, x0 - 3): x1 + 3].copy()
-            save(key_border_bg(crop, bg), IMG / 'select' / f'{sid}.png')
+            # the sheet's magenta also shows through gaps enclosed by the art (between hair and face,
+            # inside letters); it is never part of the art itself, so all of it goes
+            save(key_border_bg(crop, bg, interior=True), IMG / 'select' / f'{sid}.png')
 
     # flags: two rows of 16x13 icons with labels; keep the more colourful row
     icons = [b for b in boxes if (b[2] - b[0]) == 16 and 12 <= (b[3] - b[1]) <= 14 and b[1] > 450]

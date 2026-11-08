@@ -708,6 +708,19 @@ function LegacyPage({ story, onTip }) {
 export default function Franchise({ rows }) {
   const story = useStory(rows);
   const [tip, setTip] = useState(null);
+  // A scroll changes the chart under a pointer that hasn't moved, so no mouseleave fires:
+  // close the tooltip on any scroll of the page.
+  useEffect(() => {
+    const main = document.querySelector('main');
+    if (!main) return undefined;
+    const close = () => setTip(null);
+    main.addEventListener('scroll', close, { passive: true });
+    main.addEventListener('wheel', close, { passive: true });
+    return () => {
+      main.removeEventListener('scroll', close);
+      main.removeEventListener('wheel', close);
+    };
+  }, []);
 
   if (!rows.length) {
     return (
