@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import ScrollHint from './ScrollHint.jsx';
 
-// The data story after Player Select: two scroll pages, then the sources.
+// The data story after Player Select: two scroll pages (the credits follow in Credits.jsx).
 //   Page 1 (units sold)  1. one life bar per franchise, Street Fighter lit, the rest grey
 //                        2. the same bars split into the games each publisher reports; hover lights a franchise
 //   Page 2 (legacy)      1. Street Fighter's games as a treemap, Street Fighter II's four versions ringed in red
@@ -150,6 +151,28 @@ function stack(segs, x, y, h, scale, dir = 1) {
   return out;
 }
 
+/**
+ * False for the first frames after `key` changes, then true. Charts render their empty state
+ * (instant, no animation) while false, and animate to the real layout when it turns true.
+ */
+function useDrawn(key) {
+  const [drawnKey, setDrawnKey] = useState(null);
+  useEffect(() => {
+    let r2;
+    const r1 = requestAnimationFrame(() => {
+      r2 = requestAnimationFrame(() => setDrawnKey(key));
+    });
+    return () => {
+      cancelAnimationFrame(r1);
+      cancelAnimationFrame(r2);
+    };
+  }, [key]);
+  return drawnKey === key;
+}
+
+/** Where a bar starts from when it draws in: zero width at its base. */
+const atBase = (r, x) => r && { ...r, x, w: 0 };
+
 const inset = (r) => r && { ...r, x: r.x + 1, y: r.y + 1, w: Math.max(1, r.w - 2), h: Math.max(1, r.h - 2) };
 
 function useBox(ref) {
@@ -179,10 +202,14 @@ function Tip({ tip }) {
 }
 
 /**
- * One rectangle that animates between layouts. The outer box moves; the inner block carries
- * the colour and lifts on hover, so the hover target stays put while the block rises.
+ * One rectangle. The outer box takes its place and size (and grows a bar from zero); a middle
+ * layer pops a treemap box in; the inner block carries the colour and lifts on hover, so the
+ * hover target stays put while the block rises.
+ *   instant  jump to this state with no animation (the reset before a chart draws in)
+ *   delay    ms to wait before animating, so bars and boxes draw one after another
+ *   pop      treemap box: scaled down and invisible until drawn
  */
-function Cell({ rect, colour, className = '', lift, children, tip, onTip, onEnter, onLeave }) {
+function Cell({ rect, colour, className = '', lift, instant, delay = 0, pop, children, tip, onTip, onEnter, onLeave }) {
   const r = { x: 0, y: 0, w: 0, h: 0, ...rect };
   const hidden = !rect || rect.hidden;
   return (
@@ -195,7 +222,8 @@ function Cell({ rect, colour, className = '', lift, children, tip, onTip, onEnte
         height: Math.max(0, Math.round(r.y + r.h) - Math.round(r.y)),
         opacity: hidden ? 0 : 1,
         pointerEvents: hidden ? 'none' : undefined,
-        transition: MOVE,
+        transition: instant ? 'none' : MOVE,
+        transitionDelay: instant ? undefined : `${delay}ms`,
         zIndex: lift ? 3 : undefined,
       }}
       onMouseEnter={onEnter}
@@ -205,16 +233,27 @@ function Cell({ rect, colour, className = '', lift, children, tip, onTip, onEnte
         if (onLeave) onLeave();
       }}
     >
-      <div className={`fx-block ${className} ${lift ? 'lifted' : ''}`} style={{ backgroundColor: colour }}>
-        {children}
+      <div
+        className={`fx-pop ${pop && instant ? 'pre' : ''}`}
+        style={{ transition: instant ? 'none' : undefined, transitionDelay: instant ? undefined : `${delay}ms` }}
+      >
+        <div className={`fx-block ${className} ${lift ? 'lifted' : ''}`} style={{ backgroundColor: colour }}>
+          {children}
+        </div>
       </div>
     </div>
   );
 }
 
-function Fade({ show, style, className = '', children }) {
+/** A label that fades in (after `delay` ms) and out (at once). */
+function Fade({ show, delay = 0, style, className = '', children }) {
   return (
-    <div className={`fx-fade ${className}`} style={{ ...style, opacity: show ? 1 : 0, transition: 'opacity 0.5s, left 0.8s, top 0.8s' }} aria-hidden={!show}>
+    <div
+      className={`fx-fade ${className}`}
+      // fades in slowly after its chart, out quickly so it doesn't ghost over the next chart
+      style={{ ...style, opacity: show ? 1 : 0, transition: show ? `opacity 0.5s ease ${delay}ms` : 'opacity 0.12s' }}
+      aria-hidden={!show}
+    >
       {children}
     </div>
   );
@@ -222,17 +261,17 @@ function Fade({ show, style, className = '', children }) {
 
 /**
  * Sticky graphic with full-screen steps scrolling over it. Each step is a snap point; the
- * step most in view drives the graphic. `step` is -1 until the page is first reached, so the
- * graphic can animate in from its opening layout.
+ * step most in view drives the graphic. `step` is -1 until the page is first reached. `visit`
+ * counts entries, so coming back to a step (from either direction) draws its chart again.
  */
 function Scrolly({ label, steps, children }) {
   const ref = useRef(null);
-  const [step, setStep] = useState(-1);
+  const [{ step, visit }, setAt] = useState({ step: -1, visit: 0 });
   useEffect(() => {
     const root = ref.current.closest('main');
     const els = [...ref.current.querySelectorAll('.fx-step')];
     const io = new IntersectionObserver(
-      (es) => es.forEach((e) => e.isIntersecting && setStep(els.indexOf(e.target))),
+      (es) => es.forEach((e) => e.isIntersecting && setAt((a) => ({ step: els.indexOf(e.target), visit: a.visit + 1 }))),
       { root, threshold: 0.55 },
     );
     els.forEach((el) => io.observe(el));
@@ -240,7 +279,10 @@ function Scrolly({ label, steps, children }) {
   }, [steps.length]);
   return (
     <section className="fx-page" ref={ref} aria-label={label}>
-      <div className="fx-stage">{children(step)}</div>
+      <div className="fx-stage">
+        {children(step, visit)}
+        <ScrollHint />
+      </div>
       <div className="fx-steps">
         {steps.map((s, i) => (
           <div key={i} className={`screen fx-step ${i === step ? 'on' : ''}`}>
@@ -254,9 +296,12 @@ function Scrolly({ label, steps, children }) {
 
 // ---------------------------------------------------------------- page 1: units sold
 
-function UnitsChart({ story, step, onTip }) {
+const ROW_STAGGER = 60; // ms between one bar starting to draw and the next
+
+function UnitsChart({ story, step, visit, onTip }) {
   const ref = useRef(null);
   const { w: W, h: H } = useBox(ref);
+  const drawn = useDrawn(`${step}:${visit}`);
   const [hot, setHot] = useState(null); // { row, id } under the pointer, game view only
   const games = step >= 1; // step 0 (and before the page is reached): one bar per franchise
   useEffect(() => setHot(null), [games]);
@@ -272,6 +317,7 @@ function UnitsChart({ story, step, onTip }) {
   const cells = [];
   const rows = fs.map((f, i) => {
     const y = barTop(i);
+    const d = i * ROW_STAGGER;
     const sf = f.name === SF;
     const lit = games ? hot?.row === f.name : sf;
     const frameW = f.kind === 'none' ? null : f.total * k + 6;
@@ -285,7 +331,10 @@ function UnitsChart({ story, step, onTip }) {
       cells.push(
         <Cell
           key={s.id}
-          rect={{ ...r, x: r.x + pad, w: Math.max(1, r.w - pad * 2 + (games ? 0 : 1)) }} // fused: overlap 1px so no seams show
+          // fused: overlap 1px so no seams show
+          rect={drawn ? { ...r, x: r.x + pad, w: Math.max(1, r.w - pad * 2 + (games ? 0 : 1)) } : atBase(r, 3)}
+          instant={!drawn}
+          delay={d}
           colour={colour}
           className={`hp-seg ${s.other && games ? 'other' : ''}`}
           lift={games && hot?.id === s.id}
@@ -303,7 +352,9 @@ function UnitsChart({ story, step, onTip }) {
       cells.push(
         <Cell
           key={s.id}
-          rect={r}
+          rect={drawn ? r : atBase(r, r.x)}
+          instant={!drawn}
+          delay={d + 450}
           className={`hp-after ${lit ? 'lit' : ''}`}
           lift={hot?.id === s.id}
           tip={{ ...gameTip(f, s), eyebrow: `${s.label} · not in the series total` }}
@@ -323,14 +374,29 @@ function UnitsChart({ story, step, onTip }) {
         </div>
         <div
           className={`hp-track ${f.kind === 'none' ? 'none' : ''}`}
-          style={{ left: 0, top: y, height: barH, width: frameW ?? undefined }}
+          style={{
+            left: 0,
+            top: y,
+            height: barH,
+            width: frameW === null ? undefined : drawn ? frameW : 6,
+            opacity: f.kind === 'none' && !drawn ? 0 : 1,
+            transition: drawn ? `width 0.8s cubic-bezier(.3,.7,.2,1) ${d}ms, opacity 0.4s ${d}ms` : 'none',
+          }}
           onMouseMove={(e) => onTip({ ...totalTip(f), x: e.clientX, y: e.clientY })}
           onMouseLeave={() => onTip(null)}
         >
           {f.kind === 'none' && <span className="pixel">No published figure</span>}
         </div>
         {f.kind !== 'none' && (
-          <div className="hp-score pixel" style={{ left: frameW + afterW + 12, top: y + barH / 2 }}>
+          <div
+            className="hp-score pixel"
+            style={{
+              left: frameW + afterW + 12,
+              top: y + barH / 2,
+              opacity: drawn ? 1 : 0,
+              transition: drawn ? `color 0.3s, left 0.8s, opacity 0.4s ease ${d + 500}ms` : 'none',
+            }}
+          >
             {`${f.kind === 'atLeast' ? '≥' : ''}${fmtM(f.total)}`}
           </div>
         )}
@@ -385,7 +451,7 @@ function UnitsPage({ story, onTip }) {
   ];
   return (
     <Scrolly label="Units sold" steps={steps}>
-      {(step) => <UnitsChart story={story} step={Math.max(0, step)} onTip={onTip} />}
+      {(step, visit) => <UnitsChart story={story} step={Math.max(0, step)} visit={visit} onTip={onTip} />}
     </Scrolly>
   );
 }
@@ -395,9 +461,13 @@ function UnitsPage({ story, onTip }) {
 const SF2_ERA = /^(Super )?Street Fighter II\b/;
 const SF4_ERA = /Street Fighter IV/;
 
-function LegacyChart({ story, step, onTip }) {
+const POP_STAGGER = 70; // ms between one treemap box popping in and the next
+const BAR_STAGGER = 90; // ms between butterfly rows
+
+function LegacyChart({ story, step, visit, onTip }) {
   const ref = useRef(null);
   const { w: W, h: H } = useBox(ref);
+  const drawn = useDrawn(`${step}:${visit}`);
   const [hot, setHot] = useState(null);
   useEffect(() => setHot(null), [step]);
 
@@ -433,8 +503,7 @@ function LegacyChart({ story, step, onTip }) {
   const rightX = mid + nameW / 2;
 
   const rect = {};
-  if (step < 0) Object.assign(rect, stack(sfSegs, 0, H / 2 - 14, 28, W / Math.max(1, sum(sfSegs))));
-  else if (step === 0) Object.assign(rect, sfTree.cells);
+  if (step === 0) Object.assign(rect, sfTree.cells);
   else if (step === 1) story.films.forEach((f) => (rect[f.id] = filmTree.cells[f.id]));
   else {
     bo.forEach((b, i) => {
@@ -445,31 +514,38 @@ function LegacyChart({ story, step, onTip }) {
     // each side reads as one bar: neighbouring blocks overlap by a pixel so no seams show
     Object.keys(rect).forEach((id) => (rect[id] = { ...rect[id], w: rect[id].w + 1 }));
   }
-  const sfShown = step <= 0 || step === 2;
-  const sfColour = (s, i) => (step === 2 ? SF_ARCADE : i % 2 && step < 0 ? SF_ARCADE_2 : SF_ARCADE);
+  const sfShown = step === 0 || step === 2;
+  // treemaps pop in biggest box first; butterfly rows draw top to bottom
+  const sfRank = new Map([...sfSegs].sort((a, b) => b.v - a.v).map((s, i) => [s.id, i]));
+  const filmRank = new Map(story.films.map((f, i) => [f.id, i]));
+  const rowOf = new Map(bo.flatMap((b, i) => b.films.map((f) => [f.id, i])));
+  const sfRowIndex = bo.findIndex((b) => b.name === SF);
+  const labelsAfter = (n) => n * POP_STAGGER + 250; // group labels and the SF2 ring, once the boxes are in
+  /** A cell's rect for this frame: treemaps keep their place (they pop), bars start at their base. */
+  const place = (r, base) => (!r ? r : step === 2 && !drawn ? atBase(r, base) : r);
 
   return (
     <div className="fx-chart" ref={ref}>
       {/* treemap group labels */}
       {sfTree.boxes.map((b) => (
-        <Fade key={b.id} show={step === 0 && b.strip > 0} className={`tm-group ${b.key === 'sf2' ? 'hot' : ''}`} style={{ left: b.x + 6, top: b.y + 3, maxWidth: b.w - 12 }}>
+        <Fade key={b.id} show={step === 0 && drawn && b.strip > 0} delay={labelsAfter(sfSegs.length)} className={`tm-group ${b.key === 'sf2' ? 'hot' : ''}`} style={{ left: b.x + 6, top: b.y + 3, maxWidth: b.w - 12 }}>
           {groupName(b)} · {fmtM(sum(b.items))}
         </Fade>
       ))}
       {filmTree.boxes.map((b) => (
-        <Fade key={b.id} show={step === 1 && b.strip > 0} className="tm-group" style={{ left: b.x + 6, top: b.y + 3, maxWidth: b.w - 12 }}>
+        <Fade key={b.id} show={step === 1 && drawn && b.strip > 0} delay={labelsAfter(story.films.length)} className="tm-group" style={{ left: b.x + 6, top: b.y + 3, maxWidth: b.w - 12 }}>
           {b.key} · {fmtUsd(sum(b.items))}
         </Fade>
       ))}
       {sf2Box && (
-        <Fade show={step === 0} className="sf2-ring" style={{ left: sf2Box.x - 2, top: sf2Box.y - 2, width: sf2Box.w + 4, height: sf2Box.h + 4 }} />
+        <Fade show={step === 0 && drawn} delay={labelsAfter(sfSegs.length)} className="sf2-ring" style={{ left: sf2Box.x - 2, top: sf2Box.y - 2, width: sf2Box.w + 4, height: sf2Box.h + 4 }} />
       )}
 
       {/* butterfly: headings, names, values */}
-      <Fade show={step === 2} className="pair-head" style={{ right: W - leftX, top: rowsTop - 30 }}>
+      <Fade show={step === 2 && drawn} className="pair-head" style={{ right: W - leftX, top: rowsTop - 30 }}>
         Games sold
       </Fade>
-      <Fade show={step === 2} className="pair-head" style={{ left: rightX, top: rowsTop - 30 }}>
+      <Fade show={step === 2 && drawn} className="pair-head" style={{ left: rightX, top: rowsTop - 30 }}>
         Box office
       </Fade>
       {bo.map((b, i) => {
@@ -479,19 +555,21 @@ function LegacyChart({ story, step, onTip }) {
         const sfRow = b.name === SF;
         return (
           <React.Fragment key={b.name}>
-            <Fade show={step === 2} className={`bf-name ${sfRow ? 'sf' : ''}`} style={{ left: leftX, width: nameW, top: y + barH / 2 }}>
+            <Fade show={step === 2 && drawn} delay={i * BAR_STAGGER} className={`bf-name ${sfRow ? 'sf' : ''}`} style={{ left: leftX, width: nameW, top: y + barH / 2 }}>
               {b.name}
             </Fade>
-            <Fade show={step === 2} className={`bf-val ${u && u.kind !== 'none' ? '' : 'none'}`} style={{ right: W - (leftX - uw - 10), top: y + barH / 2 }}>
+            <Fade show={step === 2 && drawn} delay={i * BAR_STAGGER + 600} className={`bf-val ${u && u.kind !== 'none' ? '' : 'none'}`} style={{ right: W - (leftX - uw - 10), top: y + barH / 2 }}>
               {u && u.kind !== 'none' ? `${u.kind === 'atLeast' ? '≥' : ''}${fmtM(u.total)}` : 'No published figure'}
             </Fade>
-            <Fade show={step === 2} className="bf-val" style={{ left: rightX + b.total * (sideW / boMax) + 10, top: y + barH / 2 }}>
+            <Fade show={step === 2 && drawn} delay={i * BAR_STAGGER + 600} className="bf-val" style={{ left: rightX + b.total * (sideW / boMax) + 10, top: y + barH / 2 }}>
               {fmtUsd(b.total)}
               <small>{b.films.length > 1 ? `${b.films.length} films` : '1 film'}</small>
             </Fade>
             {u && u.kind !== 'none' && !sfRow && (
               <Cell
-                rect={{ x: leftX - uw, y, w: uw, h: barH, hidden: step !== 2 }}
+                rect={{ ...place({ x: leftX - uw, y, w: uw, h: barH }, leftX), hidden: step !== 2 }}
+                instant={!drawn}
+                delay={i * BAR_STAGGER}
                 colour={REST}
                 tip={totalTip(u)}
                 onTip={onTip}
@@ -502,11 +580,14 @@ function LegacyChart({ story, step, onTip }) {
       })}
 
       {/* Street Fighter's games */}
-      {sfSegs.map((s, i) => (
+      {sfSegs.map((s) => (
         <Cell
           key={s.id}
-          rect={rect[s.id] ? { ...(step === 0 ? inset(rect[s.id]) : rect[s.id]), hidden: !sfShown } : { hidden: true }}
-          colour={sfColour(s, i)}
+          rect={rect[s.id] ? { ...(step === 0 ? inset(rect[s.id]) : place(rect[s.id], leftX)), hidden: !sfShown } : { hidden: true }}
+          instant={!drawn}
+          pop={step === 0}
+          delay={step === 0 ? sfRank.get(s.id) * POP_STAGGER : sfRowIndex * BAR_STAGGER}
+          colour={SF_ARCADE}
           className={`tm-cell gold ${s.other && step !== 2 ? 'other' : ''}`}
           tip={step === 2 ? totalTip(sf) : gameTip(sf, s)}
           onTip={onTip}
@@ -527,7 +608,10 @@ function LegacyChart({ story, step, onTip }) {
         return (
           <Cell
             key={f.id}
-            rect={r ? { ...(step === 1 ? inset(r) : r), hidden: step < 1 } : { hidden: true }}
+            rect={r ? { ...(step === 1 ? inset(r) : place(r, rightX)), hidden: step < 1 } : { hidden: true }}
+            instant={!drawn}
+            pop={step === 1}
+            delay={step === 1 ? filmRank.get(f.id) * POP_STAGGER : rowOf.get(f.id) * BAR_STAGGER}
             colour={sfFilm ? SF_ARCADE : REST}
             className={`tm-cell film ${sfFilm ? 'gold' : ''}`}
             lift={step === 1 && hot === f.id}
@@ -614,29 +698,21 @@ function LegacyPage({ story, onTip }) {
   ];
   return (
     <Scrolly label="Street Fighter's legacy" steps={steps}>
-      {(step) => <LegacyChart story={story} step={step} onTip={onTip} />}
+      {(step, visit) => <LegacyChart story={story} step={step} visit={visit} onTip={onTip} />}
     </Scrolly>
   );
 }
 
 // ---------------------------------------------------------------- section
 
-export default function Franchise({ rows, loadedAt, children }) {
+export default function Franchise({ rows }) {
   const story = useStory(rows);
   const [tip, setTip] = useState(null);
-  const sources = useMemo(() => {
-    const m = new Map();
-    rows.forEach((r) => {
-      if (r.Source && r['Source URL'] && !m.has(r.Source)) m.set(r.Source, r['Source URL']);
-    });
-    return [...m.entries()];
-  }, [rows]);
 
   if (!rows.length) {
     return (
       <section className="franchise screen">
         <p className="error">No rows came back from the “Franchise Metrics” datasource.</p>
-        {children}
       </section>
     );
   }
@@ -645,25 +721,6 @@ export default function Franchise({ rows, loadedAt, children }) {
     <>
       <UnitsPage story={story} onTip={setTip} />
       <LegacyPage story={story} onTip={setTip} />
-      <section className="franchise screen sources-screen" aria-label="Sources and credits">
-        <footer className="sources">
-          <p>
-            <strong>Sources.</strong> Queried live from the “Franchise Metrics” datasource
-            {loadedAt ? ` at ${loadedAt.toLocaleString()}` : ''}. Every figure comes from a publisher (investor relations, fact books, press
-            releases, or an official post relayed by the outlet named), Nintendo IR, Box Office Mojo or The Numbers, and quotes from the trade magazine RePlay.
-            Publishers count differently: shipped versus sold, bundles, and digital copies.
-          </p>
-          <ul>
-            {sources.map(([s, url]) => (
-              <li key={s} title={`${s} — ${url}`}>
-                {s}
-                <span className="url"> — {url}</span>
-              </li>
-            ))}
-          </ul>
-        </footer>
-        {children}
-      </section>
       <Tip tip={tip} />
     </>
   );

@@ -155,14 +155,23 @@ export function preloadSfx(ids) {
   ids.forEach(loadSfx);
 }
 
-/** Play a one-shot. Before the viewer's first click browsers keep audio off, so it's skipped. */
-export function playSfx(id) {
+/**
+ * Play a one-shot, or a list of them back to back (each starts as the last ends, timed on the
+ * audio clock). Before the viewer's first click browsers keep audio off, so it's skipped.
+ */
+export function playSfx(ids) {
   if (!ctx || ctx.state !== 'running') return;
-  loadSfx(id).then((buffer) => {
-    const s = ctx.createBufferSource();
-    s.buffer = buffer;
-    s.connect(ctx.output);
-    s.start(0, SFX_LEAD[id] ?? 0);
+  const list = [].concat(ids);
+  Promise.all(list.map(loadSfx)).then((buffers) => {
+    let at = ctx.currentTime;
+    buffers.forEach((buffer, i) => {
+      const lead = SFX_LEAD[list[i]] ?? 0;
+      const s = ctx.createBufferSource();
+      s.buffer = buffer;
+      s.connect(ctx.output);
+      s.start(at, lead);
+      at += buffer.duration - lead;
+    });
   });
 }
 

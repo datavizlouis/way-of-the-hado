@@ -8,7 +8,8 @@
 //          their lowest pixels (the feet), which can be a claw or a trailing boot on a dive,
 //          and would throw the body backwards.
 //   anchors { frame: anchorX } overrides, for frames whose art drifts across the sheet.
-//   sfx    a sound effect (assets/audio/<sfx>.mp3) played as the move starts
+//   sfx    a sound effect (assets/audio/**/<sfx>.mp3) played as the move starts; a list plays
+//          one after another, each starting as the last ends
 //
 // To speed up one phase, raise `rate` and repeat the frames of the other phases in `seq`.
 //   path   (s) => [dx, dy, alpha], offset in sprite pixels: forward = right, up = positive.
@@ -35,8 +36,10 @@ const REACH = 85; // how far a travelling move goes before reaching the bio pane
 const up = (s, h) => [0, h];
 const repeat = (frames, n) => Array.from({ length: n }, () => frames).flat();
 
-const shoryuken = { rate: 0.7, path: (s) => up(s, hop(s, 3, 4.4, 5, 6, 46)) };
-const tatsumaki = { rate: 0.6 }; // the frames already show the lift
+const shoryuken = { rate: 0.7, path: (s) => up(s, hop(s, 3, 4.4, 5, 6, 46)), sfx: 'shoryuken' };
+// jump (1), three turns of the spin in the air (2-5: kick, turn, kick, turn), then land (6-8);
+// the frames already show the lift
+const tatsumaki = { seq: [0, 1, ...repeat([2, 3, 4, 5], 3), 6, 7, 8], rate: 0.9, sfx: 'tatsumaki-senpukyaku' };
 const flight = { rate: 0.55, at: (s, n, dx, dy) => [dx * bump(s, 0, n), dy * bump(s, 0, n)] };
 
 const TIMELINES = {
@@ -52,11 +55,14 @@ const TIMELINES = {
   },
   chunli: {
     Kikoken: { seq: [0, 1, 2, 3, 3, 3, 3], fire: 3 },
-    Hyakuretsukyaku: { seq: [5, ...repeat([0, 1, 2, 3, 4], 3), 5] },
-    'Spinning Bird Kick': { rate: 1.3 }, // the frames already show the lift
+    // three rounds of kicks, one 0.47s sound per round (about 1.4s each way)
+    Hyakuretsukyaku: { seq: [5, ...repeat([0, 1, 2, 3, 4], 3), 5], sfx: repeat(['hyakuretsukyaku'], 3) },
+    // flip up (0-6), the upside-down spin (7-10) three times, flip down (11-15): about 1.6s, as long as its sound;
+    // the frames already show the lift
+    'Spinning Bird Kick': { seq: [0, 1, 2, 3, 4, 5, 6, ...repeat([7, 8, 9, 10], 3), 11, 12, 13, 14, 15], rate: 1.25, sfx: 'spinning-bird-kick' },
   },
   guile: {
-    'Sonic Boom': { seq: [0, 1, 2, 2, 2, 2, 2], fire: 2 },
+    'Sonic Boom': { seq: [0, 1, 2, 2, 2, 2, 2], fire: 2, sfx: 'guile-sonic-boom' },
     'Flash Kick': { rate: 0.6, path: (s) => up(s, hop(s, 2, 3, 4.5, 6, 34)) },
   },
   blanka: {
@@ -82,12 +88,13 @@ const TIMELINES = {
       rate: 1.2,
       rear: true,
       path: (s) => (s < 10 ? [REACH * ramp(s, 4, 10), 0] : curveHome(s, 10, 18, REACH, 70)),
+      sfx: 'e-honda-sumo-headbutt',
     },
   },
   dhalsim: {
-    'Yoga Fire': { seq: [0, 1, 2, 3, 4, 4, 4], fire: 3 },
+    'Yoga Fire': { seq: [0, 1, 2, 3, 4, 4, 4], fire: 3, sfx: 'dhalsim-yoga-fire' },
     // the same exhale as Yoga Fire, with the flame flickering at full size
-    'Yoga Flame': { seq: [0, 1, 2, 3, 4, 3, 4, 3, 4, 3, 4, 5, 6, 7, 8] },
+    'Yoga Flame': { seq: [0, 1, 2, 3, 4, 3, 4, 3, 4, 3, 4, 5, 6, 7, 8], sfx: 'dhalsim-yoga-flame' },
     'Yoga Teleport': {
       rate: 0.3,
       path: (s) => {
@@ -106,12 +113,12 @@ const TIMELINES = {
     'Flying Barcelona Attack': { rate: flight.rate, path: (s) => flight.at(s, 3, 44, 108) },
   },
   sagat: {
-    'Tiger Shot': { seq: [0, 1, 2, 2, 2, 2, 2], fire: 2 },
-    'Tiger Uppercut': { rate: 0.7, path: (s) => up(s, hop(s, 3, 4, 5, 7, 58)) },
+    'Tiger Shot': { seq: [0, 1, 2, 2, 2, 2, 2], fire: 2, sfx: 'sagat-tiger' },
+    'Tiger Uppercut': { rate: 0.7, path: (s) => up(s, hop(s, 3, 4, 5, 7, 58)), sfx: ['sagat-tiger', 'sagat-uppercut'] },
     'Tiger Knee': { rate: 0.7, rear: true, path: (s) => [REACH * ramp(s, 1, 5.5), 30 * bump(s, 1.5, 6)] },
   },
   bison: {
-    'Psycho Crusher': { seq: [0, 0, 1, 1, 2, 2, ...repeat([3, 4, 5, 6], 2), 7, 7], rate: 1.2, rear: true, path: (s) => [REACH * ramp(s, 6, 14), 0] },
+    'Psycho Crusher': { seq: [0, 0, 1, 1, 2, 2, ...repeat([3, 4, 5, 6], 2), 7, 7], rate: 1.2, rear: true, path: (s) => [REACH * ramp(s, 6, 14), 0], sfx: 'psycho_crusher' },
     'Scissor Kick': { rate: 0.6, rear: true, path: (s) => [80 * ramp(s, 0, 4), 0] },
     'Head Press': { rate: flight.rate, path: (s) => flight.at(s, 7, 44, 108) },
   },
@@ -142,7 +149,7 @@ const TIMELINES = {
 };
 
 /** Every sound effect a move uses, to load ahead of time. */
-export const MOVE_SFX = [...new Set(Object.values(TIMELINES).flatMap((moves) => Object.values(moves).map((m) => m.sfx).filter(Boolean)))];
+export const MOVE_SFX = [...new Set(Object.values(TIMELINES).flatMap((moves) => Object.values(moves).flatMap((m) => m.sfx || [])))];
 
 /** The move's timeline, or an empty one for a move that plays its frames on the spot. */
 export function moveTimeline(id, moveName) {

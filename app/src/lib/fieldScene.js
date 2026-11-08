@@ -397,6 +397,8 @@ export class FieldScene {
   }
 
   select(id) {
+    // switching straight from one fighter to another: stop the one we're leaving
+    if (this.selected && this.selected !== id) this.fighters.find((x) => x.c.Id === this.selected)?.f.setMove(null);
     this.mode = 'detail';
     this.selected = id;
     this.hovered = null;

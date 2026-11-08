@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Fighter } from '../lib/fighter.js';
 import { playTrack, playSfx, preloadSfx, isPlaying, subscribe, audioProblem } from '../lib/player.js';
 import { assetUrl } from '../assets.js';
+import ScrollHint from './ScrollHint.jsx';
 import { drawStageMap, STAGES, FLAG_POS, MAP_W, MAP_H } from '../lib/stageMap.js';
 import { getImage } from '../assets.js';
 
@@ -190,6 +191,7 @@ export default function Soundtrack({ characters }) {
         </div>
       </div>
       {problem && <p className="ost-note error">{problem}</p>}
+      <ScrollHint />
     </section>
   );
 }

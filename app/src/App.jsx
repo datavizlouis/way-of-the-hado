@@ -4,6 +4,7 @@ import Intro from './sections/Intro.jsx';
 import Characters from './sections/Characters.jsx';
 import Soundtrack from './sections/Soundtrack.jsx';
 import Franchise from './sections/Franchise.jsx';
+import Credits from './sections/Credits.jsx';
 import { playTrack } from './lib/player.js';
 
 // The first track on every load: the "?" tile on the select screen.
@@ -83,15 +84,8 @@ export default function App() {
       {data.story.length > 0 && <Intro chapters={data.story} characters={data.characters} />}
       {data.characters.length > 0 && <Characters characters={data.characters} />}
       {data.characters.length > 0 && <Soundtrack characters={data.characters} />}
-      <Franchise rows={data.metrics} loadedAt={data.loadedAt}>
-      <footer className="credits">
-        <p>
-          A non-commercial fan visualization. Street Fighter and all characters, names and artwork are © Capcom. Character
-          sprites from <em>Super Street Fighter II</em> were ripped by Lord Zymeth (finaldestinationpixelation.com) and shared on
-          The Spriters Resource. Akuma's sprites ripped by Deekman. Ryu's curse adapted from the Cursed effect in pixelfx by Patch (MIT), with smoke from Sprite Fusion by Hugo Duprez (MIT). Select-screen portraits ripped by Phatman; select-screen artwork (named portraits, flags and background) captured by GaryCXJK. Brush font: Cafe Felix by JSHcreates (personal-use licence). World map outlines from Natural Earth (public domain). Story text, charts and placeholder art by the author.
-        </p>
-      </footer>
-      </Franchise>
+      <Franchise rows={data.metrics} />
+      <Credits rows={data.metrics} characters={data.characters} loadedAt={data.loadedAt} />
     </main>
   );
 }

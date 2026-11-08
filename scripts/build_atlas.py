@@ -6,6 +6,7 @@ Reads   app/assets/sprites/raw/<id>.gif      raw sheet (not committed: Capcom ar
 Writes  app/assets/sprites/<id>.png          atlas, background keyed out
         app/assets/sprites/sprites.json      frame rectangles per animation (atlas coordinates)
         app/assets/img/portraits/<id>.png    first mugshot, for the soundtrack select screen
+        app/assets/img/portraits/<id>-lose.png  third mugshot (beaten face), for the credits
         <slices>/contact.png                 every chosen animation, for a visual check
 
 usage: build_atlas.py SLICES_DIR
@@ -141,6 +142,22 @@ def main(slices):
             p = find_panel(meta['panels'], spec['portrait'])
             mug = max(p['frames'], key=lambda f: f[2] * f[3])  # biggest = a full mugshot, not the tiny icon
             Image.fromarray(cut(sheet, bg, mug)).save(PORTRAITS / f'{sid}.png', optimize=True)
+            # the panel holds three full mugshots left to right (calm, hurt, beaten) plus the tiny icon.
+            # The slicer can split a mugshot in two (Fei Long's raised fist), so pieces whose boxes
+            # overlap are merged back into one before counting.
+            groups = []
+            for f in sorted(p['frames'], key=lambda f: f[0]):
+                g = groups[-1] if groups else None
+                if g and f[0] < g[0] + g[2] and f[1] < g[1] + g[3] and g[1] < f[1] + f[3]:
+                    x0, y0 = min(g[0], f[0]), min(g[1], f[1])
+                    x1, y1 = max(g[0] + g[2], f[0] + f[2]), max(g[1] + g[3], f[1] + f[3])
+                    groups[-1] = [x0, y0, x1 - x0, y1 - y0, 0]
+                else:
+                    groups.append(list(f[:4]) + [0])
+            full = [g for g in groups if g[2] * g[3] >= 0.8 * mug[2] * mug[3]]
+            if len(full) < 3:
+                raise SystemExit(f'{sid}: expected 3 full mugshots in the portrait panel, found {len(full)}')
+            Image.fromarray(cut(sheet, bg, full[2])).save(PORTRAITS / f'{sid}-lose.png', optimize=True)
 
         # contact strip
         strip_h = max(f[3] for a in anims.values() for f in a['frames']) + 14

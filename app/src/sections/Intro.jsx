@@ -35,35 +35,31 @@ function wrap(ctx, text, maxW) {
   return lines;
 }
 
+// Desktop only (user request): no stacked narrow-screen layout.
 function buildLayout(step, chapters, W, H) {
-  const narrow = W < 760;
   if (step === 0) {
     // no paper strokes on the title: the logo brings its own ink splat
     return { kind: 'title', strokes: [], cx: W / 2, U: H - FOOT };
   }
   const ch = chapters[step - 1];
   // the beat's box: art on one side, text on the other, swapping sides every beat
-  const bw = narrow ? W * 0.9 : Math.min(W * 0.76, 1160);
+  const bw = Math.min(W * 0.76, 1160);
   const U = H - FOOT;
   const bh = Math.min(U * 0.74, 600);
   const bx = (W - bw) / 2;
   const by = U / 2 - bh / 2;
   const artLeft = step % 2 === 1;
-  const artW = narrow ? bw : bw * (STORY_ART[step]?.artShare ?? 0.4);
-  const gap = narrow ? 0 : bw * (STORY_ART[step]?.artGap ?? 0.06);
-  const art = narrow
-    ? { x: bx, y: by, w: bw, h: bh * 0.42 }
-    : { x: artLeft ? bx : bx + bw - artW, y: by, w: artW, h: bh };
-  const text = narrow
-    ? { x: bx, y: by + bh * 0.46, w: bw, h: bh * 0.54 }
-    : { x: artLeft ? bx + artW + gap : bx, y: by, w: bw - artW - gap, h: bh };
+  const artW = bw * (STORY_ART[step]?.artShare ?? 0.4);
+  const gap = bw * (STORY_ART[step]?.artGap ?? 0.06);
+  const art = { x: artLeft ? bx : bx + bw - artW, y: by, w: artW, h: bh };
+  const text = { x: artLeft ? bx + artW + gap : bx, y: by, w: bw - artW - gap, h: bh };
   // one big white splat, wider and taller than the box, with spikes but few loose drops
   const padX = Math.min(W * 0.06, 90);
   const padY = U * 0.06;
   const blob = makeBlob(bx - padX, by - padY, bw + padX * 2, bh + padY * 2, 900 + step * 31, {
     color: PAPER, spikes: 26, spikeLen: Math.min(U * 0.045, 46), rough: 0.05, drops: 12, dropSize: 5,
   });
-  return { kind: 'chapter', strokes: [], blob, art, text, artLeft, narrow, ch, step };
+  return { kind: 'chapter', strokes: [], blob, art, text, artLeft, ch, step };
 }
 
 function drawContent(ctx, L, W, H, a, slide) {
@@ -265,6 +261,34 @@ export default function Intro({ chapters }) {
   const anim = useRef({ shown: 0, target: 0, phase: 'paint', start: performance.now(), paintedAt: performance.now(), layouts: new Map() });
   const imgs = useRef({ logo: null, story: {} });
   const inView = useInView(wrapRef, 0.05);
+
+  // Back on this screen after leaving it (scrolled up from the fighters, or "back to top" from the
+  // credits): start again from the logo, painted in fresh.
+  useEffect(() => {
+    const el = wrapRef.current;
+    let left = false;
+    // By ratio, not isIntersecting: with the next screen flush below, the intro's edge still
+    // "intersects" with zero area when it's scrolled away, and a smooth scroll's last report can
+    // land just above 0. Under 2% visible counts as gone; back over 2% counts as returned.
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (e.intersectionRatio < 0.02) left = true;
+        else if (left) {
+          left = false;
+          const s = anim.current;
+          const now = performance.now();
+          s.shown = 0;
+          s.target = 0;
+          s.phase = 'paint';
+          s.start = now;
+          s.paintedAt = now;
+          setStep(0);
+        }
+      }
+    }, { threshold: [0, 0.02] });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
   // assets
   useEffect(() => {

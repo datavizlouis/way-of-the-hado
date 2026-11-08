@@ -4,6 +4,7 @@ import { Fighter, parseMoves } from '../lib/fighter.js';
 import { strokeImage } from '../lib/brush.js';
 import { useInView } from '../lib/useInView.js';
 import SplatPanel from './SplatPanel.jsx';
+import ScrollHint from './ScrollHint.jsx';
 import { renderFireText } from '../lib/logo.js';
 
 function webglAvailable() {
@@ -118,6 +119,34 @@ export default function Characters({ characters }) {
     };
   }, [characters, gl]);
 
+  // While a fighter is zoomed in, the wheel moves to the previous / next fighter (wrapping round)
+  // instead of the page. With nobody selected the event is left to the page's one-screen scroll.
+  const selectedRef = useRef(null);
+  selectedRef.current = selected;
+  useEffect(() => {
+    const el = sectionRef.current;
+    let lock = 0;
+    const onWheel = (e) => {
+      const cur = selectedRef.current;
+      if (!cur) return;
+      const dir = Math.sign(e.deltaY);
+      if (!dir) return;
+      e.preventDefault();
+      const now = performance.now();
+      if (now < lock || Math.abs(e.deltaY) < 4) return;
+      lock = now + 650; // one fighter per notch, past the wheel's momentum
+      const i = characters.findIndex((c) => c.Id === cur);
+      const next = characters[(i + dir + characters.length) % characters.length];
+      if (sceneRef.current) sceneRef.current.select(next.Id);
+      else {
+        setSelected(next.Id);
+        setActiveMove(null);
+      }
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [characters]);
+
   const sel = characters.find((c) => c.Id === selected);
   const hov = characters.find((c) => c.Id === hovered);
   const moves = sel ? parseMoves(sel.Moves) : [];
@@ -181,6 +210,8 @@ export default function Characters({ characters }) {
           </button>
         ))}
       </nav>
+
+      <ScrollHint text={sel ? 'Scroll to change characters' : 'Scroll for more'} />
 
       <SplatPanel open={!!sel} seed={sel ? sel.Name.length * 7 : 3} className="bio-panel">
         {sel && (
